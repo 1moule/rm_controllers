@@ -47,9 +47,15 @@
 #include <geometry_msgs/TwistStamped.h>
 #include <geometry_msgs/Vector3Stamped.h>
 #include <nav_msgs/Odometry.h>
+#include <rm_chassis_controllers/chassisConfig.h>
+#include <dynamic_reconfigure/server.h>
 
 namespace rm_chassis_controllers
 {
+struct Config
+{
+  double effort_coeff, velocity_coeff, power_offset;
+};
 struct Command
 {
   geometry_msgs::Twist cmd_vel_;
@@ -144,16 +150,17 @@ protected:
    * @param msg This expresses velocity in free space broken into its linear and angular parts.
    */
   void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg);
+  void reconfigCB(rm_chassis_controllers::chassisConfig& config, uint32_t);
 
   rm_control::RobotStateHandle robot_state_handle_{};
   hardware_interface::EffortJointInterface* effort_joint_interface_{};
   std::vector<hardware_interface::JointHandle> joint_handles_{};
 
-  double wheel_base_{}, wheel_track_{}, wheel_radius_{}, publish_rate_{}, twist_angular_{}, timeout_{}, effort_coeff_{},
-      velocity_coeff_{}, power_offset_{};
+  double wheel_base_{}, wheel_track_{}, wheel_radius_{}, publish_rate_{}, twist_angular_{}, timeout_{};
   bool enable_odom_tf_ = false;
   bool publish_odom_tf_ = false;
   bool state_changed_ = true;
+  bool dynamic_reconfig_initialized_ = false;
   enum
   {
     RAW,
@@ -174,8 +181,11 @@ protected:
   rm_common::TfRtBroadcaster tf_broadcaster_{};
   ros::Subscriber cmd_chassis_sub_;
   ros::Subscriber cmd_vel_sub_;
+  Config config_{};
   Command cmd_struct_;
   realtime_tools::RealtimeBuffer<Command> cmd_rt_buffer_;
+  realtime_tools::RealtimeBuffer<Config> config_rt_buffer;
+  dynamic_reconfigure::Server<rm_chassis_controllers::chassisConfig>* d_srv_{};
 };
 
 }  // namespace rm_chassis_controllers

@@ -29,7 +29,12 @@ find_package(catkin REQUIRED
         tf2
         tf2_geometry_msgs
         angles
+        dynamic_reconfigure
         )
+
+generate_dynamic_reconfigure_options(
+        cfg/Chassis.cfg
+)
 
 find_package(Eigen3 REQUIRED)
 
@@ -65,6 +70,7 @@ catkin_package(
         tf2
         tf2_geometry_msgs
         angles
+        dynamic_reconfigure
         LIBRARIES ${PROJECT_NAME}
 )
 
@@ -93,6 +99,8 @@ add_library(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME}
         ${catkin_LIBRARIES}
         )
+
+add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_gencfg)
 
 #############
 ## Install ##

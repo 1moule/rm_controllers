@@ -53,9 +53,9 @@ bool ChassisBase<T...>::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
                              ros::NodeHandle& controller_nh)
 {
   if (!controller_nh.getParam("publish_rate", publish_rate_) || !controller_nh.getParam("timeout", timeout_) ||
-      !controller_nh.getParam("power/vel_coeff", velocity_coeff_) ||
-      !controller_nh.getParam("power/effort_coeff", effort_coeff_) ||
-      !controller_nh.getParam("power/power_offset", power_offset_))
+      !controller_nh.getParam("power/vel_coeff", config_.velocity_coeff) ||
+      !controller_nh.getParam("power/effort_coeff", config_.effort_coeff) ||
+      !controller_nh.getParam("power/power_offset", config_.power_offset))
   {
     ROS_ERROR("Some chassis params doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
     return false;
@@ -106,6 +106,12 @@ bool ChassisBase<T...>::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
 
   cmd_chassis_sub_ = controller_nh.subscribe<rm_msgs::ChassisCmd>("command", 1, &ChassisBase::cmdChassisCallback, this);
   cmd_vel_sub_ = root_nh.subscribe<geometry_msgs::Twist>("cmd_vel", 1, &ChassisBase::cmdVelCallback, this);
+
+  d_srv_ = new dynamic_reconfigure::Server<rm_chassis_controllers::chassisConfig>(controller_nh);
+  dynamic_reconfigure::Server<rm_chassis_controllers::chassisConfig>::CallbackType cb = [this](auto&& PH1, auto&& PH2) {
+    reconfigCB(PH1, PH2);
+  };
+  d_srv_->setCallback(cb);
 
   if (controller_nh.hasParam("pid_follow"))
     if (!pid_follow_.init(ros::NodeHandle(controller_nh, "pid_follow")))
@@ -352,8 +358,8 @@ void ChassisBase<T...>::powerLimit()
       c += square(real_vel);
     }
   }
-  a *= effort_coeff_;
-  c = c * velocity_coeff_ - power_offset_ - power_limit;
+  a *= config_.effort_coeff;
+  c = c * config_.velocity_coeff - config_.power_offset - power_limit;
   // Root formula for quadratic equation in one variable
   double zoom_coeff = (square(b) - 4 * a * c) > 0 ? ((-b + sqrt(square(b) - 4 * a * c)) / (2 * a)) : 0.;
   for (auto joint : joint_handles_)
@@ -391,4 +397,22 @@ void ChassisBase<T...>::cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg
   cmd_rt_buffer_.writeFromNonRT(cmd_struct_);
 }
 
+template <typename... T>
+void ChassisBase<T...>::reconfigCB(rm_chassis_controllers::chassisConfig& config, uint32_t)
+{
+  ROS_INFO("[Chassis] Dynamic params change");
+  if (!dynamic_reconfig_initialized_)
+  {
+    Config init_config = *config_rt_buffer.readFromNonRT();
+    config.effort_coeff = init_config.effort_coeff;
+    config.velocity_coeff = init_config.velocity_coeff;
+    config.power_offset = init_config.power_offset;
+    dynamic_reconfig_initialized_ = true;
+  }
+  Config config_non_rt{ .effort_coeff = config.effort_coeff,
+                        .velocity_coeff = config.velocity_coeff,
+                        .power_offset = config.power_offset };
+
+  config_rt_buffer.writeFromNonRT(config_non_rt);
+}
 }  // namespace rm_chassis_controllers
