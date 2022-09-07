@@ -38,11 +38,14 @@
 #include <rm_common/ros_utilities.h>
 #include <string>
 #include <pluginlib/class_list_macros.hpp>
-#include "rm_shooter_controllers/standard.h"
+#include "rm_shooter_controllers/shooter_base.h"
 
 namespace rm_shooter_controllers
 {
-bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& root_nh, ros::NodeHandle& controller_nh)
+// template class Controller<hardware_interface::EffortJointInterface>;
+template <typename... T>
+bool Controller<T...>::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& root_nh,
+                            ros::NodeHandle& controller_nh)
 {
   config_ = { .block_effort = getParam(controller_nh, "block_effort", 0.),
               .block_speed = getParam(controller_nh, "block_speed", 0.),
@@ -50,8 +53,6 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
               .block_overtime = getParam(controller_nh, "block_overtime", 0.),
               .anti_block_angle = getParam(controller_nh, "anti_block_angle", 0.),
               .anti_block_threshold = getParam(controller_nh, "anti_block_threshold", 0.),
-              .forward_push_threshold = getParam(controller_nh, "forward_push_threshold", 0.),
-              .exit_push_threshold = getParam(controller_nh, "exit_push_threshold", 0.),
               .qd_10 = getParam(controller_nh, "qd_10", 0.),
               .qd_15 = getParam(controller_nh, "qd_15", 0.),
               .qd_16 = getParam(controller_nh, "qd_16", 0.),
@@ -69,41 +70,28 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
     reconfigCB(std::forward<decltype(PH1)>(PH1), std::forward<decltype(PH2)>(PH2));
   };
   d_srv_->setCallback(cb);
-
-  ros::NodeHandle nh_friction_l = ros::NodeHandle(controller_nh, "friction_left");
-  ros::NodeHandle nh_friction_r = ros::NodeHandle(controller_nh, "friction_right");
-  ros::NodeHandle nh_trigger = ros::NodeHandle(controller_nh, "trigger");
   effort_joint_interface_ = robot_hw->get<hardware_interface::EffortJointInterface>();
-  return ctrl_friction_l_.init(effort_joint_interface_, nh_friction_l) &&
-         ctrl_friction_r_.init(effort_joint_interface_, nh_friction_r) &&
-         ctrl_trigger_.init(effort_joint_interface_, nh_trigger);
+
+  return true;
 }
 
-void Controller::starting(const ros::Time& /*time*/)
+template <typename... T>
+void Controller<T...>::starting(const ros::Time& /*time*/)
 {
   state_ = STOP;
   state_changed_ = true;
 }
 
-void Controller::update(const ros::Time& time, const ros::Duration& period)
+template <typename... T>
+void Controller<T...>::update(const ros::Time& time, const ros::Duration& period)
 {
   cmd_ = *cmd_rt_buffer_.readFromRT();
   config_ = *config_rt_buffer.readFromRT();
-  if (state_ != cmd_.mode)
+  if (state_ != cmd_.mode && state_ != BLOCK)
   {
-    if (state_ != BLOCK)
-      if ((state_ != PUSH || cmd_.mode != READY) ||
-          (cmd_.mode == READY &&
-           std::fmod(std::abs(ctrl_trigger_.command_struct_.position_ - ctrl_trigger_.getPosition()), 2. * M_PI) <
-               config_.exit_push_threshold))
-      {
-        state_ = cmd_.mode;
-        state_changed_ = true;
-      }
+    state_ = cmd_.mode;
+    state_changed_ = true;
   }
-
-  if (state_ != STOP)
-    setSpeed(cmd_);
   switch (state_)
   {
     case READY:
@@ -119,83 +107,11 @@ void Controller::update(const ros::Time& time, const ros::Duration& period)
       block(time, period);
       break;
   }
-  ctrl_friction_l_.update(time, period);
-  ctrl_friction_r_.update(time, period);
-  ctrl_trigger_.update(time, period);
+  ctrlUpdate(time, period);
 }
 
-void Controller::stop(const ros::Time& time, const ros::Duration& period)
-{
-  if (state_changed_)
-  {  // on enter
-    state_changed_ = false;
-    ROS_INFO("[Shooter] Enter STOP");
-
-    ctrl_friction_l_.setCommand(0.);
-    ctrl_friction_r_.setCommand(0.);
-    ctrl_trigger_.setCommand(ctrl_trigger_.joint_.getPosition());
-  }
-}
-
-void Controller::ready(const ros::Duration& period)
-{
-  if (state_changed_)
-  {  // on enter
-    state_changed_ = false;
-    ROS_INFO("[Shooter] Enter READY");
-
-    normalize();
-  }
-}
-
-void Controller::push(const ros::Time& time, const ros::Duration& period)
-{
-  if (state_changed_)
-  {  // on enter
-    state_changed_ = false;
-    ROS_INFO("[Shooter] Enter PUSH");
-  }
-  if ((cmd_.speed == cmd_.SPEED_ZERO_FOR_TEST ||
-       (ctrl_friction_l_.joint_.getVelocity() >= push_qd_threshold_ * ctrl_friction_l_.command_ &&
-        ctrl_friction_l_.joint_.getVelocity() > M_PI &&
-        ctrl_friction_r_.joint_.getVelocity() <= push_qd_threshold_ * ctrl_friction_r_.command_ &&
-        ctrl_friction_r_.joint_.getVelocity() < -M_PI)) &&
-      (time - last_shoot_time_).toSec() >= 1. / cmd_.hz)
-  {  // Time to shoot!!!
-    if (std::fmod(std::abs(ctrl_trigger_.command_struct_.position_ - ctrl_trigger_.getPosition()), 2. * M_PI) <
-        config_.forward_push_threshold)
-    {
-      ctrl_trigger_.setCommand(ctrl_trigger_.command_struct_.position_ -
-                               2. * M_PI / static_cast<double>(push_per_rotation_));
-      last_shoot_time_ = time;
-    }
-  }
-  else
-    ROS_DEBUG("[Shooter] Wait for friction wheel");
-
-  // Check block
-  if ((ctrl_trigger_.joint_.getEffort() < -config_.block_effort &&
-       std::abs(ctrl_trigger_.joint_.getVelocity()) < config_.block_speed) ||
-      ((time - last_shoot_time_).toSec() > 1 / cmd_.hz &&
-       std::abs(ctrl_trigger_.joint_.getVelocity()) < config_.block_speed))
-  {
-    if (!maybe_block_)
-    {
-      block_time_ = time;
-      maybe_block_ = true;
-    }
-    if ((time - block_time_).toSec() >= config_.block_duration)
-    {
-      state_ = BLOCK;
-      state_changed_ = true;
-      ROS_INFO("[Shooter] Exit PUSH");
-    }
-  }
-  else
-    maybe_block_ = false;
-}
-
-void Controller::block(const ros::Time& time, const ros::Duration& period)
+template <typename... T>
+void Controller<T...>::block(const ros::Time& time, const ros::Duration& period)
 {
   if (state_changed_)
   {  // on enter
@@ -216,32 +132,38 @@ void Controller::block(const ros::Time& time, const ros::Duration& period)
   }
 }
 
-void Controller::setSpeed(const rm_msgs::ShootCmd& cmd)
+template <typename... T>
+void Controller<T...>::checkBlock(const ros::Time& time, const ros::Duration& period)
 {
-  double qd_des;
-  if (cmd_.speed == cmd_.SPEED_10M_PER_SECOND)
-    qd_des = config_.qd_10;
-  else if (cmd_.speed == cmd_.SPEED_15M_PER_SECOND)
-    qd_des = config_.qd_15;
-  else if (cmd_.speed == cmd_.SPEED_16M_PER_SECOND)
-    qd_des = config_.qd_16;
-  else if (cmd_.speed == cmd_.SPEED_18M_PER_SECOND)
-    qd_des = config_.qd_18;
-  else if (cmd_.speed == cmd_.SPEED_30M_PER_SECOND)
-    qd_des = config_.qd_30;
+  // Check block
+  if (ctrl_trigger_.joint_.getEffort() < -config_.block_effort &&
+      std::abs(ctrl_trigger_.joint_.getVelocity()) < config_.block_speed)
+  {
+    if (!maybe_block_)
+    {
+      block_time_ = time;
+      maybe_block_ = true;
+    }
+    if ((time - block_time_).toSec() >= config_.block_duration)
+    {
+      state_ = BLOCK;
+      state_changed_ = true;
+      ROS_INFO("[Shooter] Exit PUSH");
+    }
+  }
   else
-    qd_des = 0.;
-  ctrl_friction_l_.setCommand(qd_des + config_.lf_extra_rotat_speed);
-  ctrl_friction_r_.setCommand(-qd_des);
+    maybe_block_ = false;
 }
 
-void Controller::normalize()
+template <typename... T>
+void Controller<T...>::normalize()
 {
   double push_angle = 2. * M_PI / static_cast<double>(push_per_rotation_);
   ctrl_trigger_.setCommand(push_angle * std::floor((ctrl_trigger_.joint_.getPosition() + 0.01) / push_angle));
 }
 
-void Controller::reconfigCB(rm_shooter_controllers::ShooterConfig& config, uint32_t /*level*/)
+template <typename... T>
+void Controller<T...>::reconfigCB(rm_shooter_controllers::ShooterConfig& config, uint32_t /*level*/)
 {
   ROS_INFO("[Shooter] Dynamic params change");
   if (!dynamic_reconfig_initialized_)
@@ -253,13 +175,6 @@ void Controller::reconfigCB(rm_shooter_controllers::ShooterConfig& config, uint3
     config.block_overtime = init_config.block_overtime;
     config.anti_block_angle = init_config.anti_block_angle;
     config.anti_block_threshold = init_config.anti_block_threshold;
-    config.forward_push_threshold = init_config.forward_push_threshold;
-    config.exit_push_threshold = init_config.exit_push_threshold;
-    config.qd_10 = init_config.qd_10;
-    config.qd_15 = init_config.qd_15;
-    config.qd_16 = init_config.qd_16;
-    config.qd_18 = init_config.qd_18;
-    config.qd_30 = init_config.qd_30;
     config.lf_extra_rotat_speed = init_config.lf_extra_rotat_speed;
     dynamic_reconfig_initialized_ = true;
   }
@@ -268,18 +183,9 @@ void Controller::reconfigCB(rm_shooter_controllers::ShooterConfig& config, uint3
                         .block_duration = config.block_duration,
                         .block_overtime = config.block_overtime,
                         .anti_block_angle = config.anti_block_angle,
-                        .anti_block_threshold = config.anti_block_threshold,
-                        .forward_push_threshold = config.forward_push_threshold,
-                        .exit_push_threshold = config.exit_push_threshold,
-                        .qd_10 = config.qd_10,
-                        .qd_15 = config.qd_15,
-                        .qd_16 = config.qd_16,
-                        .qd_18 = config.qd_18,
-                        .qd_30 = config.qd_30,
-                        .lf_extra_rotat_speed = config.lf_extra_rotat_speed };
+                        .anti_block_threshold = config.anti_block_threshold };
   config_rt_buffer.writeFromNonRT(config_non_rt);
 }
-
 }  // namespace rm_shooter_controllers
 
-PLUGINLIB_EXPORT_CLASS(rm_shooter_controllers::Controller, controller_interface::ControllerBase)
+// PLUGINLIB_EXPORT_CLASS(rm_shooter_controllers::Controller, controller_interface::ControllerBase)
