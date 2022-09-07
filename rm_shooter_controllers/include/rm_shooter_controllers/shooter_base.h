@@ -58,8 +58,8 @@ struct Config
   double qd_10, qd_15, qd_16, qd_18, qd_30, lf_extra_rotat_speed;
 };
 
-class Controller : public controller_interface::MultiInterfaceController<hardware_interface::EffortJointInterface,
-                                                                         rm_control::RobotStateInterface>
+template <typename... T>
+class Controller : public controller_interface::MultiInterfaceController<T...>
 {
 public:
   Controller() = default;
@@ -67,21 +67,22 @@ public:
   void update(const ros::Time& time, const ros::Duration& period) override;
   void starting(const ros::Time& /*time*/) override;
 
-private:
-  void stop(const ros::Time& time, const ros::Duration& period);
-  void ready(const ros::Duration& period);
-  void push(const ros::Time& time, const ros::Duration& period);
+protected:
+  virtual void stop(const ros::Time& time, const ros::Duration& period) = 0;
+  virtual void push(const ros::Time& time, const ros::Duration& period) = 0;
+  virtual void ready(const ros::Time& time, const ros::Duration& period) = 0;
+  virtual void ctrlUpdate(const ros::Time& time, const ros::Duration& period) = 0;
+  virtual void reconfigCB(rm_shooter_controllers::ShooterConfig& config, uint32_t /*level*/) = 0;
   void block(const ros::Time& time, const ros::Duration& period);
-  void setSpeed(const rm_msgs::ShootCmd& cmd);
+  void checkBlock(const ros::Time& time, const ros::Duration& period);
   void normalize();
   void commandCB(const rm_msgs::ShootCmdConstPtr& msg)
   {
     cmd_rt_buffer_.writeFromNonRT(*msg);
   }
-  void reconfigCB(rm_shooter_controllers::ShooterConfig& config, uint32_t /*level*/);
 
   hardware_interface::EffortJointInterface* effort_joint_interface_{};
-  effort_controllers::JointVelocityController ctrl_friction_l_, ctrl_friction_r_;
+
   effort_controllers::JointPositionController ctrl_trigger_;
   int push_per_rotation_{};
   double push_qd_threshold_{};
