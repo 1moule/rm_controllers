@@ -1,7 +1,7 @@
 <library path="lib/librm_shooter_controllers">
 
-    <class name="rm_shooter_controllers/Controller"
-           type="rm_shooter_controllers::Controller"
+    <class name="rm_shooter_controllers/FrictionWheelController"
+           type="rm_shooter_controllers::FrictionWheelController"
            base_class_type="controller_interface::ControllerBase">
         <description>
             The Controller is RoboMaster standard robot
@@ -9,5 +9,14 @@
             type of hardware interface.
         </description>
     </class>
+
+    <class name="rm_shooter_controllers/PneumaticController"
+           type="rm_shooter_controllers::PneumaticController"
+           base_class_type="controller_interface::ControllerBase">
+        <description>
+            test.
+        </description>>
+    </class>
+
 
 </library>

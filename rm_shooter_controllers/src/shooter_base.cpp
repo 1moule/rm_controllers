@@ -37,12 +37,12 @@
 
 #include <rm_common/ros_utilities.h>
 #include <string>
-#include <pluginlib/class_list_macros.hpp>
 #include "rm_shooter_controllers/shooter_base.h"
 
 namespace rm_shooter_controllers
 {
-// template class Controller<hardware_interface::EffortJointInterface>;
+template class Controller<hardware_interface::EffortJointInterface, rm_control::RobotStateInterface>;
+
 template <typename... T>
 bool Controller<T...>::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& root_nh,
                             ros::NodeHandle& controller_nh)
@@ -92,6 +92,7 @@ void Controller<T...>::update(const ros::Time& time, const ros::Duration& period
     state_ = cmd_.mode;
     state_changed_ = true;
   }
+  setspeed(time, period);
   switch (state_)
   {
     case READY:
@@ -108,6 +109,18 @@ void Controller<T...>::update(const ros::Time& time, const ros::Duration& period
       break;
   }
   ctrlUpdate(time, period);
+}
+
+template <typename... T>
+void Controller<T...>::ready(const ros::Duration& period)
+{
+  if (state_changed_)
+  {  // on enter
+    state_changed_ = false;
+    ROS_INFO("[Shooter] Enter READY");
+
+    normalize();
+  }
 }
 
 template <typename... T>
@@ -133,7 +146,7 @@ void Controller<T...>::block(const ros::Time& time, const ros::Duration& period)
 }
 
 template <typename... T>
-void Controller<T...>::checkBlock(const ros::Time& time, const ros::Duration& period)
+void Controller<T...>::checkBlock(const ros::Time& time)
 {
   // Check block
   if (ctrl_trigger_.joint_.getEffort() < -config_.block_effort &&
@@ -187,5 +200,3 @@ void Controller<T...>::reconfigCB(rm_shooter_controllers::ShooterConfig& config,
   config_rt_buffer.writeFromNonRT(config_non_rt);
 }
 }  // namespace rm_shooter_controllers
-
-// PLUGINLIB_EXPORT_CLASS(rm_shooter_controllers::Controller, controller_interface::ControllerBase)

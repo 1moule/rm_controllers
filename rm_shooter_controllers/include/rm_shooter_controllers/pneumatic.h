@@ -13,9 +13,9 @@ public:
   bool init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& root_nh, ros::NodeHandle& controller_nh) override;
 
 private:
-  void ready(const ros::Time& time, const ros::Duration& period) override;
   void stop(const ros::Time& time, const ros::Duration& period) override;
   void push(const ros::Time& time, const ros::Duration& period) override;
+  void setspeed(const ros::Time& time, const ros::Duration& period) override;
   void ctrlUpdate(const ros::Time& time, const ros::Duration& period) override;
   void reconfigCB(rm_shooter_controllers::ShooterConfig& config, uint32_t /*level*/) override;
 };
