@@ -3,6 +3,8 @@
 //
 
 #include "rm_shooter_controllers/friction_wheel.h"
+#include <pluginlib/class_list_macros.hpp>
+
 namespace rm_shooter_controllers
 {
 bool FrictionWheelController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& root_nh,
@@ -30,18 +32,6 @@ void FrictionWheelController::stop(const ros::Time& time, const ros::Duration& p
   }
 }
 
-void FrictionWheelController::ready(const ros::Time& time, const ros::Duration& period)
-{
-  if (state_changed_)
-  {  // on enter
-    state_changed_ = false;
-    ROS_INFO("[Shooter] Enter READY");
-
-    setspeed(time, period);
-    normalize();
-  }
-}
-
 void FrictionWheelController::push(const ros::Time& time, const ros::Duration& period)
 {
   if (state_changed_)
@@ -62,7 +52,7 @@ void FrictionWheelController::push(const ros::Time& time, const ros::Duration& p
   }
   else
     ROS_DEBUG("[Shooter] Wait for friction wheel");
-  checkBlock(time, period);
+  checkBlock(time);
 }
 
 void FrictionWheelController::setspeed(const ros::Time& time, const ros::Duration& period)
@@ -114,3 +104,4 @@ void FrictionWheelController::reconfigCB(rm_shooter_controllers::ShooterConfig& 
   config_rt_buffer.writeFromNonRT(config_non_rt);
 }
 }  // namespace rm_shooter_controllers
+PLUGINLIB_EXPORT_CLASS(rm_shooter_controllers::FrictionWheelController, controller_interface::ControllerBase)

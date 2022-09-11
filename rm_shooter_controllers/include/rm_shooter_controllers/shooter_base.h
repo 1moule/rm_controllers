@@ -70,11 +70,12 @@ public:
 protected:
   virtual void stop(const ros::Time& time, const ros::Duration& period) = 0;
   virtual void push(const ros::Time& time, const ros::Duration& period) = 0;
-  virtual void ready(const ros::Time& time, const ros::Duration& period) = 0;
   virtual void ctrlUpdate(const ros::Time& time, const ros::Duration& period) = 0;
   virtual void reconfigCB(rm_shooter_controllers::ShooterConfig& config, uint32_t /*level*/) = 0;
+  virtual void setspeed(const ros::Time& time, const ros::Duration& period) = 0;
+  void ready(const ros::Duration& period);
   void block(const ros::Time& time, const ros::Duration& period);
-  void checkBlock(const ros::Time& time, const ros::Duration& period);
+  void checkBlock(const ros::Time& time);
   void normalize();
   void commandCB(const rm_msgs::ShootCmdConstPtr& msg)
   {
@@ -100,6 +101,7 @@ protected:
   };
   int state_ = STOP;
   Config config_{};
+  std::vector<hardware_interface::JointHandle> joint_handles_{};
   realtime_tools::RealtimeBuffer<Config> config_rt_buffer;
   realtime_tools::RealtimeBuffer<rm_msgs::ShootCmd> cmd_rt_buffer_;
   rm_msgs::ShootCmd cmd_;
