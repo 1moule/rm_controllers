@@ -12,7 +12,7 @@ bool PneumaticController::init(hardware_interface::RobotHW* robot_hw, ros::NodeH
   ros::NodeHandle root_nh_valve = ros::NodeHandle(root_nh, "valve");
   ros::NodeHandle controller_nh_valve = ros::NodeHandle(controller_nh, "valve");
   ros::NodeHandle nh_trigger = ros::NodeHandle(controller_nh, "trigger");
-  cmd_publisher_ = controller_nh.advertise<rm_msgs::GpioData>("gpio_controller/command", 1);
+  cmd_publisher_ = controller_nh.advertise<rm_msgs::GpioData>("/controller/gpio_controller/command", 1);
   msg_.gpio_name[0] = "putter", msg_.gpio_name[1] = "vent";
   return (ctrl_trigger_.init(effort_joint_interface_, nh_trigger) &&
           ctrl_valve.init(robot_hw, root_nh_valve, controller_nh_valve));
