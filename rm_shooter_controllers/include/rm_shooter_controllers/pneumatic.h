@@ -3,6 +3,7 @@
 #pragma once
 
 #include "rm_shooter_controllers/shooter_base.h"
+#include "gpio_controller/gpio_controller.h"
 
 namespace rm_shooter_controllers
 {
@@ -15,8 +16,11 @@ public:
 private:
   void stop(const ros::Time& time, const ros::Duration& period) override;
   void push(const ros::Time& time, const ros::Duration& period) override;
-  void setspeed(const ros::Time& time, const ros::Duration& period) override;
+  void reachSpeed(double qd_des) override;
   void ctrlUpdate(const ros::Time& time, const ros::Duration& period) override;
-  void reconfigCB(rm_shooter_controllers::ShooterConfig& config, uint32_t /*level*/) override;
+
+  gpio_controller::Controller ctrl_valve;
+  ros::Publisher cmd_publisher_;
+  rm_msgs::GpioData msg_{};
 };
 }  // namespace rm_shooter_controllers

@@ -24,6 +24,7 @@
     <depend>control_toolbox</depend>
     <depend>effort_controllers</depend>
     <depend>dynamic_reconfigure</depend>
+    <depend>gpio_controller</depend>>
 
     <export>
         <controller_interface
