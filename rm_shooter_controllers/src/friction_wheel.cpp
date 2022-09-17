@@ -34,12 +34,6 @@ void FrictionWheelController::stop(const ros::Time& time, const ros::Duration& p
 
 void FrictionWheelController::push(const ros::Time& time, const ros::Duration& period)
 {
-  if (state_changed_)
-  {  // on enter
-    state_changed_ = false;
-    ROS_INFO("[Shooter] Enter PUSH");
-  }
-  setspeed(time, period);
   if ((cmd_.speed == cmd_.SPEED_ZERO_FOR_TEST && (ros::Time::now() - last_shoot_time_).toSec() >= 1. / cmd_.hz) ||
       (ctrl_friction_l_.joint_.getVelocity() >= push_qd_threshold_ * ctrl_friction_l_.command_ &&
        ctrl_friction_l_.joint_.getVelocity() > M_PI &&
@@ -55,21 +49,8 @@ void FrictionWheelController::push(const ros::Time& time, const ros::Duration& p
   checkBlock(time);
 }
 
-void FrictionWheelController::setspeed(const ros::Time& time, const ros::Duration& period)
+void FrictionWheelController::reachSpeed(double qd_des)
 {
-  double qd_des;
-  if (cmd_.speed == cmd_.SPEED_10M_PER_SECOND)
-    qd_des = config_.qd_10;
-  else if (cmd_.speed == cmd_.SPEED_15M_PER_SECOND)
-    qd_des = config_.qd_15;
-  else if (cmd_.speed == cmd_.SPEED_16M_PER_SECOND)
-    qd_des = config_.qd_16;
-  else if (cmd_.speed == cmd_.SPEED_18M_PER_SECOND)
-    qd_des = config_.qd_18;
-  else if (cmd_.speed == cmd_.SPEED_30M_PER_SECOND)
-    qd_des = config_.qd_30;
-  else
-    qd_des = 0.;
   ctrl_friction_l_.setCommand(qd_des + config_.lf_extra_rotat_speed);
   ctrl_friction_r_.setCommand(-qd_des);
 }
@@ -79,29 +60,6 @@ void FrictionWheelController::ctrlUpdate(const ros::Time& time, const ros::Durat
   ctrl_friction_l_.update(time, period);
   ctrl_friction_r_.update(time, period);
   ctrl_trigger_.update(time, period);
-}
-
-void FrictionWheelController::reconfigCB(rm_shooter_controllers::ShooterConfig& config, uint32_t /*level*/)
-{
-  ROS_INFO("[Shooter] Dynamic params change");
-  if (!dynamic_reconfig_initialized_)
-  {
-    Config init_config = *config_rt_buffer.readFromNonRT();  // config init use yaml
-    config.qd_10 = init_config.qd_10;
-    config.qd_15 = init_config.qd_15;
-    config.qd_16 = init_config.qd_16;
-    config.qd_18 = init_config.qd_18;
-    config.qd_30 = init_config.qd_30;
-    config.lf_extra_rotat_speed = init_config.lf_extra_rotat_speed;
-    dynamic_reconfig_initialized_ = true;
-  }
-  Config config_non_rt{ .qd_10 = config.qd_10,
-                        .qd_15 = config.qd_15,
-                        .qd_16 = config.qd_16,
-                        .qd_18 = config.qd_18,
-                        .qd_30 = config.qd_30,
-                        .lf_extra_rotat_speed = config.lf_extra_rotat_speed };
-  config_rt_buffer.writeFromNonRT(config_non_rt);
 }
 }  // namespace rm_shooter_controllers
 PLUGINLIB_EXPORT_CLASS(rm_shooter_controllers::FrictionWheelController, controller_interface::ControllerBase)

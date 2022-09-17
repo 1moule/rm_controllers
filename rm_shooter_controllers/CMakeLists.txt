@@ -18,6 +18,7 @@ find_package(catkin REQUIRED
 
         controller_interface
         effort_controllers
+        gpio_controller
         dynamic_reconfigure
         )
 

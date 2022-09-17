@@ -176,6 +176,26 @@ void Controller<T...>::normalize()
 }
 
 template <typename... T>
+void Controller<T...>::setspeed(const ros::Time& time, const ros::Duration& period)
+{
+  double qd_des;
+  if (cmd_.speed == cmd_.SPEED_10M_PER_SECOND)
+    qd_des = config_.qd_10;
+  else if (cmd_.speed == cmd_.SPEED_15M_PER_SECOND)
+    qd_des = config_.qd_15;
+  else if (cmd_.speed == cmd_.SPEED_16M_PER_SECOND)
+    qd_des = config_.qd_16;
+  else if (cmd_.speed == cmd_.SPEED_18M_PER_SECOND)
+    qd_des = config_.qd_18;
+  else if (cmd_.speed == cmd_.SPEED_30M_PER_SECOND)
+    qd_des = config_.qd_30;
+  else
+    qd_des = 0.;
+
+  reachSpeed(qd_des);
+}
+
+template <typename... T>
 void Controller<T...>::reconfigCB(rm_shooter_controllers::ShooterConfig& config, uint32_t /*level*/)
 {
   ROS_INFO("[Shooter] Dynamic params change");
@@ -188,6 +208,11 @@ void Controller<T...>::reconfigCB(rm_shooter_controllers::ShooterConfig& config,
     config.block_overtime = init_config.block_overtime;
     config.anti_block_angle = init_config.anti_block_angle;
     config.anti_block_threshold = init_config.anti_block_threshold;
+    config.qd_10 = init_config.qd_10;
+    config.qd_15 = init_config.qd_15;
+    config.qd_16 = init_config.qd_16;
+    config.qd_18 = init_config.qd_18;
+    config.qd_30 = init_config.qd_30;
     config.lf_extra_rotat_speed = init_config.lf_extra_rotat_speed;
     dynamic_reconfig_initialized_ = true;
   }
@@ -196,7 +221,13 @@ void Controller<T...>::reconfigCB(rm_shooter_controllers::ShooterConfig& config,
                         .block_duration = config.block_duration,
                         .block_overtime = config.block_overtime,
                         .anti_block_angle = config.anti_block_angle,
-                        .anti_block_threshold = config.anti_block_threshold };
+                        .anti_block_threshold = config.anti_block_threshold,
+                        .qd_10 = config.qd_10,
+                        .qd_15 = config.qd_15,
+                        .qd_16 = config.qd_16,
+                        .qd_18 = config.qd_18,
+                        .qd_30 = config.qd_30,
+                        .lf_extra_rotat_speed = config.lf_extra_rotat_speed };
   config_rt_buffer.writeFromNonRT(config_non_rt);
 }
 }  // namespace rm_shooter_controllers
