@@ -71,13 +71,13 @@ protected:
   virtual void stop(const ros::Time& time, const ros::Duration& period) = 0;
   virtual void push(const ros::Time& time, const ros::Duration& period) = 0;
   virtual void reachSpeed(double qd_des) = 0;
+  virtual void normalize() = 0;
   virtual void ctrlUpdate(const ros::Time& time, const ros::Duration& period) = 0;
   void reconfigCB(rm_shooter_controllers::ShooterConfig& config, uint32_t /*level*/);
   void setspeed(const ros::Time& time, const ros::Duration& period);
   void ready(const ros::Duration& period);
   void block(const ros::Time& time, const ros::Duration& period);
   void checkBlock(const ros::Time& time);
-  void normalize();
   void commandCB(const rm_msgs::ShootCmdConstPtr& msg)
   {
     cmd_rt_buffer_.writeFromNonRT(*msg);

@@ -55,6 +55,12 @@ void FrictionWheelController::reachSpeed(double qd_des)
   ctrl_friction_r_.setCommand(-qd_des);
 }
 
+void FrictionWheelController::normalize()
+{
+  double push_angle = 2. * M_PI / static_cast<double>(push_per_rotation_);
+  ctrl_trigger_.setCommand(push_angle * std::floor((ctrl_trigger_.joint_.getPosition() + 0.01) / push_angle));
+}
+
 void FrictionWheelController::ctrlUpdate(const ros::Time& time, const ros::Duration& period)
 {
   ctrl_friction_l_.update(time, period);

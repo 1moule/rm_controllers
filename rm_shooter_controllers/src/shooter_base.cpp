@@ -169,13 +169,6 @@ void Controller<T...>::checkBlock(const ros::Time& time)
 }
 
 template <typename... T>
-void Controller<T...>::normalize()
-{
-  double push_angle = 2. * M_PI / static_cast<double>(push_per_rotation_);
-  ctrl_trigger_.setCommand(push_angle * std::floor((ctrl_trigger_.joint_.getPosition() + 0.01) / push_angle));
-}
-
-template <typename... T>
 void Controller<T...>::setspeed(const ros::Time& time, const ros::Duration& period)
 {
   double qd_des;
