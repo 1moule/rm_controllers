@@ -17,6 +17,7 @@ private:
   void stop(const ros::Time& time, const ros::Duration& period) override;
   void push(const ros::Time& time, const ros::Duration& period) override;
   void reachSpeed(double qd_des) override;
+  void normalize() override;
   void ctrlUpdate(const ros::Time& time, const ros::Duration& period) override;
 
   effort_controllers::JointVelocityController ctrl_friction_l_, ctrl_friction_r_;

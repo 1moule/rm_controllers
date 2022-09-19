@@ -17,8 +17,10 @@ private:
   void stop(const ros::Time& time, const ros::Duration& period) override;
   void push(const ros::Time& time, const ros::Duration& period) override;
   void reachSpeed(double qd_des) override;
+  void normalize() override;
   void ctrlUpdate(const ros::Time& time, const ros::Duration& period) override;
 
+  effort_controllers::JointPositionController ctrl_putter_;
   gpio_controller::Controller ctrl_valve;
   ros::Publisher cmd_publisher_;
   rm_msgs::GpioData msg_{};
