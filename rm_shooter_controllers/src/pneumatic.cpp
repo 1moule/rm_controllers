@@ -13,11 +13,12 @@ bool PneumaticController::init(hardware_interface::RobotHW* robot_hw, ros::NodeH
   ros::NodeHandle controller_nh_valve = ros::NodeHandle(controller_nh, "valve");
   ros::NodeHandle nh_trigger = ros::NodeHandle(controller_nh, "trigger");
   ros::NodeHandle nh_putter = ros::NodeHandle(controller_nh, "putter");
-  cmd_publisher_ = controller_nh.advertise<rm_msgs::GpioData>("/controller/gpio_controller/command", 1);
+  ros::NodeHandle nh_pump = ros::NodeHandle(controller_nh, "pump");
+  gpio_cmd_publisher_ = controller_nh.advertise<rm_msgs::GpioData>("/controller/gpio_controller/command", 1);
   msg_.gpio_name[0] = "valve";
 
   return (ctrl_trigger_.init(effort_joint_interface_, nh_trigger) &&
-          ctrl_trigger_.init(effort_joint_interface_, nh_putter) &&
+          ctrl_putter_.init(effort_joint_interface_, nh_putter) && ctrl_pump_.init(effort_joint_interface_, nh_pump) &&
           ctrl_valve.init(robot_hw, root_nh_valve, controller_nh_valve));
 }
 
@@ -37,10 +38,10 @@ void PneumaticController::push(const ros::Time& time, const ros::Duration& perio
     // if(no bullet in bomb zone && air pressure > threshold)  //bullet in bomb zone
     {
       msg_.gpio_state[0] = rm_control::OUTPUT;  // shoot
-      cmd_publisher_.publish(msg_);
+      gpio_cmd_publisher_.publish(msg_);
     }
     msg_.gpio_state[0] = rm_control::INPUT;
-    cmd_publisher_.publish(msg_);
+    gpio_cmd_publisher_.publish(msg_);
     ctrl_putter_.setCommand(-ctrl_putter_.command_struct_.position_);  // cylinder recovery
     last_shoot_time_ = time;
   }
@@ -55,14 +56,18 @@ void PneumaticController::stop(const ros::Time& time, const ros::Duration& perio
 
     ctrl_trigger_.setCommand(ctrl_trigger_.joint_.getPosition());
     ctrl_putter_.setCommand(ctrl_putter_.joint_.getPosition());
+    ctrl_pump_.setCommand(0);
     msg_.gpio_state[0] = rm_control::INPUT;
-    cmd_publisher_.publish(msg_);
+    gpio_cmd_publisher_.publish(msg_);
   }
 }
 
 void PneumaticController::reachSpeed(double qd_des)
 {
-  // TODO: According to qd_des, change the pressure of the pressure chamber
+  // if air pressure < qd_des (desire pressure)
+  ctrl_pump_.setCommand(580);
+  // else
+  ctrl_pump_.setCommand(0);
 }
 
 void PneumaticController::normalize()
@@ -77,6 +82,7 @@ void PneumaticController::ctrlUpdate(const ros::Time& time, const ros::Duration&
   ctrl_valve.update(time, period);
   ctrl_trigger_.update(time, period);
   ctrl_putter_.update(time, period);
+  ctrl_pump_.update(time, period);
 }
 }  // namespace rm_shooter_controllers
 PLUGINLIB_EXPORT_CLASS(rm_shooter_controllers::PneumaticController, controller_interface::ControllerBase)

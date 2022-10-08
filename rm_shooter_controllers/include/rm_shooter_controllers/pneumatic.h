@@ -21,8 +21,9 @@ private:
   void ctrlUpdate(const ros::Time& time, const ros::Duration& period) override;
 
   effort_controllers::JointPositionController ctrl_putter_;
+  effort_controllers::JointVelocityController ctrl_pump_;
   gpio_controller::Controller ctrl_valve;
-  ros::Publisher cmd_publisher_;
+  ros::Publisher gpio_cmd_publisher_;
   rm_msgs::GpioData msg_{};
 };
 }  // namespace rm_shooter_controllers
