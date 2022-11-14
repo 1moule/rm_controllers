@@ -70,7 +70,7 @@ public:
 protected:
   virtual void stop(const ros::Time& time, const ros::Duration& period) = 0;
   virtual void push(const ros::Time& time, const ros::Duration& period) = 0;
-  virtual void reachSpeed(double qd_des) = 0;
+  virtual void reachSpeed(double qd_des);
   virtual void normalize() = 0;
   virtual void ctrlUpdate(const ros::Time& time, const ros::Duration& period) = 0;
   void reconfigCB(rm_shooter_controllers::ShooterConfig& config, uint32_t /*level*/);
@@ -88,6 +88,7 @@ protected:
   effort_controllers::JointPositionController ctrl_trigger_;
   int push_per_rotation_{};
   double push_qd_threshold_{};
+  double qd_des_{};
   bool dynamic_reconfig_initialized_ = false;
   bool state_changed_ = false;
   bool maybe_block_ = false;

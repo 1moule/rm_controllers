@@ -25,7 +25,6 @@ find_package(catkin REQUIRED
         realtime_tools
         control_toolbox
         effort_controllers
-        gpio_controller
         dynamic_reconfigure
         )
 
