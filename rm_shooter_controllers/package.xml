@@ -17,8 +17,6 @@
     <depend>controller_interface</depend>
     <depend>effort_controllers</depend>
     <depend>dynamic_reconfigure</depend>
-    <depend>gpio_controller</depend>>
-
     <export>
         <controller_interface
                 plugin="${prefix}/rm_shooter_controllers_plugins.xml"/>

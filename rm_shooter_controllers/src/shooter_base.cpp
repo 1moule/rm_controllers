@@ -171,21 +171,20 @@ void Controller<T...>::checkBlock(const ros::Time& time)
 template <typename... T>
 void Controller<T...>::setspeed(const ros::Time& time, const ros::Duration& period)
 {
-  double qd_des;
   if (cmd_.speed == cmd_.SPEED_10M_PER_SECOND)
-    qd_des = config_.qd_10;
+    qd_des_ = config_.qd_10;
   else if (cmd_.speed == cmd_.SPEED_15M_PER_SECOND)
-    qd_des = config_.qd_15;
+    qd_des_ = config_.qd_15;
   else if (cmd_.speed == cmd_.SPEED_16M_PER_SECOND)
-    qd_des = config_.qd_16;
+    qd_des_ = config_.qd_16;
   else if (cmd_.speed == cmd_.SPEED_18M_PER_SECOND)
-    qd_des = config_.qd_18;
+    qd_des_ = config_.qd_18;
   else if (cmd_.speed == cmd_.SPEED_30M_PER_SECOND)
-    qd_des = config_.qd_30;
+    qd_des_ = config_.qd_30;
   else
-    qd_des = 0.;
+    qd_des_ = 0.;
 
-  reachSpeed(qd_des);
+  reachSpeed(qd_des_);
 }
 
 template <typename... T>
