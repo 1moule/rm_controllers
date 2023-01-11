@@ -9,10 +9,10 @@ bool PneumaticController::init(hardware_interface::RobotHW* robot_hw, ros::NodeH
   Controller::init(robot_hw, root_nh, controller_nh);
   ros::NodeHandle nh_trigger = ros::NodeHandle(controller_nh, "trigger");
   ros::NodeHandle nh_putter = ros::NodeHandle(controller_nh, "putter");
-  gpio_cmd_publisher_ = controller_nh.advertise<rm_msgs::GpioData>("/controller/gpio_controller/command", 1);
+  ros::NodeHandle nh_pump = ros::NodeHandle(controller_nh, "pump");
 
   return (ctrl_trigger_.init(effort_joint_interface_, nh_trigger) &&
-          ctrl_putter_.init(effort_joint_interface_, nh_putter));
+          ctrl_putter_.init(effort_joint_interface_, nh_putter) && ctrl_pump_.init(effort_joint_interface_, nh_pump));
 }
 
 void PneumaticController::push(const ros::Time& time, const ros::Duration& period)
@@ -22,28 +22,29 @@ void PneumaticController::push(const ros::Time& time, const ros::Duration& perio
     state_changed_ = false;
     ROS_INFO("[Shooter] Enter PUSH");
   }
-  /*  if ((((ros::Time::now() - last_shoot_time_).toSec() >= 1. / cmd_.hz) && ctrl_putter_.joint_.getPosition() < 0.02
-     && no bullet in stone) || (cmd_.speed == cmd_.SPEED_ZERO_FOR_TEST && (ros::Time::now() - last_shoot_time_).toSec() >= 1. / cmd_.hz))*/
+  if (((ros::Time::now() - last_shoot_time_).toSec() >= 1. / cmd_.hz) ||
+      ((cmd_.speed == cmd_.SPEED_ZERO_FOR_TEST) && ((ros::Time::now() - last_shoot_time_).toSec() >= 1. / cmd_.hz)))
   {
     ctrl_trigger_.setCommand(ctrl_trigger_.command_struct_.position_ -
                              2. * M_PI / static_cast<double>(push_per_rotation_));
-    ctrl_putter_.joint_.setCommand(0.1);  // push bullet to pressure chamber
-    // if(bullet in bomb zone)  //bullet in bomb zone
+    if ((ros::Time::now() - last_trigger_time_).toSec() < trigger_threshold_)
+      ctrl_putter_.setCommand(1);  // push bullet to pressure chamber
+    // if (air pressure < qd_des (desire pressure) && (std::abs(ctrl_putter_.joint_.getPosition() -
+    // ctrl_putter_.joint_.getCommand()) < putter_pos_threshold_;
     {
-      // if air pressure < qd_des (desire pressure)
-      msg_.gpio_state[1] = 1;  // start pumping
-      // else
+      ctrl_pump_.setCommand(500);  // start pumping
+      if (!start_pump_flag_)
       {
-        msg_.gpio_state[1] = 0;  // stop
-        msg_.gpio_state[0] = 1;
-        gpio_cmd_publisher_.publish(msg_);
-        //        if(no bullet in zone)
-        {
-          ctrl_putter_.setCommand(0);  // cylinder recovery
-          std::fill(msg_.gpio_state.begin(), msg_.gpio_state.end(), 0);
-        }
-        last_shoot_time_ = time;
+        last_pump_time_ = ros::Time::now();
+        start_pump_flag_ = true;
       }
+    }
+    // if(air pressure >= qd_des (desire pressure) || ros::Time::now() - last_pump_time_ > pump_threshold_)
+    {
+      ctrl_pump_.setCommand(0);    // stop
+      ctrl_putter_.setCommand(0);  // cylinder recovery
+      last_shoot_time_ = time;
+      start_pump_flag_ = false;
     }
   }
   checkBlock(time);
@@ -57,9 +58,8 @@ void PneumaticController::stop(const ros::Time& time, const ros::Duration& perio
     ROS_INFO("[Shooter] Enter STOP");
 
     ctrl_trigger_.setCommand(ctrl_trigger_.joint_.getPosition());
-    ctrl_putter_.joint_.setCommand(0);
-    std::fill(msg_.gpio_state.begin(), msg_.gpio_state.end(), 0);
-    gpio_cmd_publisher_.publish(msg_);
+    ctrl_putter_.setCommand(0);
+    ctrl_pump_.setCommand(0);
   }
 }
 
@@ -68,12 +68,14 @@ void PneumaticController::normalize()
   double push_angle = 2. * M_PI / static_cast<double>(push_per_rotation_);
   ctrl_trigger_.setCommand(push_angle * std::floor((ctrl_trigger_.joint_.getPosition() + 0.01) / push_angle));
   ctrl_putter_.joint_.setCommand(0);
+  ctrl_pump_.setCommand(0);
 }
 
 void PneumaticController::ctrlUpdate(const ros::Time& time, const ros::Duration& period)
 {
   ctrl_trigger_.update(time, period);
   ctrl_putter_.update(time, period);
+  ctrl_pump_.update(time, period);
 }
 }  // namespace rm_shooter_controllers
 PLUGINLIB_EXPORT_CLASS(rm_shooter_controllers::PneumaticController, controller_interface::ControllerBase)

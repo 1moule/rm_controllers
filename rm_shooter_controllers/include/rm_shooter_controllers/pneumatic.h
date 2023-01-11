@@ -1,7 +1,6 @@
 #pragma once
 
 #include "rm_shooter_controllers/shooter_base.h"
-#include "rm_msgs/GpioData.h"
 
 namespace rm_shooter_controllers
 {
@@ -19,7 +18,11 @@ private:
   void ctrlUpdate(const ros::Time& time, const ros::Duration& period) override;
 
   effort_controllers::JointPositionController ctrl_putter_;
-  ros::Publisher gpio_cmd_publisher_;
-  rm_msgs::GpioData msg_{};
+  effort_controllers::JointVelocityController ctrl_pump_;
+
+  ros::Time last_trigger_time_, last_pump_time_;
+
+  double trigger_threshold_{}, pump_threshold_{};
+  bool start_pump_flag_ = false;
 };
 }  // namespace rm_shooter_controllers
