@@ -13,7 +13,6 @@ public:
 private:
   void stop(const ros::Time& time, const ros::Duration& period) override;
   void push(const ros::Time& time, const ros::Duration& period) override;
-  void reachSpeed(double qd_des) override;
   void normalize() override;
   void ctrlUpdate(const ros::Time& time, const ros::Duration& period) override;
 
@@ -21,8 +20,9 @@ private:
   effort_controllers::JointVelocityController ctrl_pump_;
 
   ros::Time last_trigger_time_, last_pump_time_;
+  ros::Duration pump_duration_;
 
-  double trigger_threshold_{}, pump_threshold_{};
+  double trigger_threshold_{}, putter_pos_threshold_{};
   bool start_pump_flag_ = false;
 };
 }  // namespace rm_shooter_controllers

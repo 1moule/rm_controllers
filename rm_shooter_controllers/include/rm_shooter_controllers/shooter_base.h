@@ -71,7 +71,7 @@ public:
 protected:
   virtual void stop(const ros::Time& time, const ros::Duration& period) = 0;
   virtual void push(const ros::Time& time, const ros::Duration& period) = 0;
-  virtual void reachSpeed(double qd_des);
+  virtual void reachSpeed(double qd_des){};
   virtual void normalize() = 0;
   virtual void ctrlUpdate(const ros::Time& time, const ros::Duration& period) = 0;
   void reconfigCB(rm_shooter_controllers::ShooterConfig& config, uint32_t /*level*/);

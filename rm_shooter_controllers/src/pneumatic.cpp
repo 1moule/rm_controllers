@@ -10,7 +10,10 @@ bool PneumaticController::init(hardware_interface::RobotHW* robot_hw, ros::NodeH
   ros::NodeHandle nh_trigger = ros::NodeHandle(controller_nh, "trigger");
   ros::NodeHandle nh_putter = ros::NodeHandle(controller_nh, "putter");
   ros::NodeHandle nh_pump = ros::NodeHandle(controller_nh, "pump");
-
+  if (!controller_nh.getParam("trigger threshold", trigger_threshold_))
+    ROS_ERROR("Trigger threshold no defined (namespace: %s)", controller_nh.getNamespace().c_str());
+  if (!controller_nh.getParam("putter pos threshold", putter_pos_threshold_))
+    ROS_ERROR("putter position threshold  no defined (namespace: %s)", controller_nh.getNamespace().c_str());
   return (ctrl_trigger_.init(effort_joint_interface_, nh_trigger) &&
           ctrl_putter_.init(effort_joint_interface_, nh_putter) && ctrl_pump_.init(effort_joint_interface_, nh_pump));
 }
@@ -29,8 +32,7 @@ void PneumaticController::push(const ros::Time& time, const ros::Duration& perio
                              2. * M_PI / static_cast<double>(push_per_rotation_));
     if ((ros::Time::now() - last_trigger_time_).toSec() < trigger_threshold_)
       ctrl_putter_.setCommand(1);  // push bullet to pressure chamber
-    // if (air pressure < qd_des (desire pressure) && (std::abs(ctrl_putter_.joint_.getPosition() -
-    // ctrl_putter_.joint_.getCommand()) < putter_pos_threshold_;
+    if (std::abs(ctrl_putter_.joint_.getPosition() - ctrl_putter_.joint_.getCommand()) < putter_pos_threshold_)
     {
       ctrl_pump_.setCommand(500);  // start pumping
       if (!start_pump_flag_)
@@ -39,7 +41,7 @@ void PneumaticController::push(const ros::Time& time, const ros::Duration& perio
         start_pump_flag_ = true;
       }
     }
-    // if(air pressure >= qd_des (desire pressure) || ros::Time::now() - last_pump_time_ > pump_threshold_)
+    if (ros::Time::now() - last_pump_time_ > pump_duration_)
     {
       ctrl_pump_.setCommand(0);    // stop
       ctrl_putter_.setCommand(0);  // cylinder recovery
