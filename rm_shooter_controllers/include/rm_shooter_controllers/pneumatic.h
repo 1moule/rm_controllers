@@ -19,10 +19,9 @@ private:
   effort_controllers::JointPositionController ctrl_putter_;
   effort_controllers::JointVelocityController ctrl_pump_;
 
-  ros::Time last_trigger_time_, last_pump_time_;
-  ros::Duration pump_duration_;
+  ros::Time last_pump_time_;
 
-  double trigger_threshold_{}, putter_pos_threshold_{};
-  bool start_pump_flag_ = false;
+  double putter_pos_threshold_{}, pump_duration_{};
+  bool is_pumping_, start_shoot_, start_pump_ = false;
 };
 }  // namespace rm_shooter_controllers

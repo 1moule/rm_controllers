@@ -10,10 +10,10 @@ bool PneumaticController::init(hardware_interface::RobotHW* robot_hw, ros::NodeH
   ros::NodeHandle nh_trigger = ros::NodeHandle(controller_nh, "trigger");
   ros::NodeHandle nh_putter = ros::NodeHandle(controller_nh, "putter");
   ros::NodeHandle nh_pump = ros::NodeHandle(controller_nh, "pump");
-  if (!controller_nh.getParam("trigger threshold", trigger_threshold_))
-    ROS_ERROR("Trigger threshold no defined (namespace: %s)", controller_nh.getNamespace().c_str());
   if (!controller_nh.getParam("putter pos threshold", putter_pos_threshold_))
-    ROS_ERROR("putter position threshold  no defined (namespace: %s)", controller_nh.getNamespace().c_str());
+    ROS_ERROR("putter position threshold no defined (namespace: %s)", controller_nh.getNamespace().c_str());
+  if (!controller_nh.getParam("pump duration", pump_duration_))
+    ROS_ERROR("putter duration no defined (namespace: %s)", controller_nh.getNamespace().c_str());
   return (ctrl_trigger_.init(effort_joint_interface_, nh_trigger) &&
           ctrl_putter_.init(effort_joint_interface_, nh_putter) && ctrl_pump_.init(effort_joint_interface_, nh_pump));
 }
@@ -25,28 +25,50 @@ void PneumaticController::push(const ros::Time& time, const ros::Duration& perio
     state_changed_ = false;
     ROS_INFO("[Shooter] Enter PUSH");
   }
-  if (((ros::Time::now() - last_shoot_time_).toSec() >= 1. / cmd_.hz) ||
-      ((cmd_.speed == cmd_.SPEED_ZERO_FOR_TEST) && ((ros::Time::now() - last_shoot_time_).toSec() >= 1. / cmd_.hz)))
+  if ((((ros::Time::now() - last_shoot_time_).toSec() >= 1. / cmd_.hz) ||
+       ((cmd_.speed == cmd_.SPEED_ZERO_FOR_TEST) && ((ros::Time::now() - last_shoot_time_).toSec() >= 1. / cmd_.hz))))
   {
-    ctrl_trigger_.setCommand(ctrl_trigger_.command_struct_.position_ -
-                             2. * M_PI / static_cast<double>(push_per_rotation_));
-    if ((ros::Time::now() - last_trigger_time_).toSec() < trigger_threshold_)
-      ctrl_putter_.setCommand(1);  // push bullet to pressure chamber
-    if (std::abs(ctrl_putter_.joint_.getPosition() - ctrl_putter_.joint_.getCommand()) < putter_pos_threshold_)
+    if (std::fmod(std::abs(ctrl_trigger_.command_struct_.position_ - ctrl_trigger_.getPosition()), 2. * M_PI) <
+            config_.forward_push_threshold &&
+        !start_shoot_)
     {
-      ctrl_pump_.setCommand(500);  // start pumping
-      if (!start_pump_flag_)
+      ctrl_trigger_.setCommand(ctrl_trigger_.command_struct_.position_ -
+                               2. * M_PI / static_cast<double>(push_per_rotation_));
+      ctrl_trigger_.update(time, period);
+      start_shoot_ = true;
+    }
+
+    // push bullet to pressure chamber
+    if (std::fmod(std::abs(ctrl_trigger_.command_struct_.position_ - ctrl_trigger_.getPosition()), 2. * M_PI) <
+        config_.forward_push_threshold)
+    {
+      ctrl_putter_.setCommand(1);
+      ctrl_putter_.update(time, period);
+      start_pump_ = true;
+    }
+
+    // start pumping
+    if (std::fmod(std::abs(ctrl_putter_.command_struct_.position_ - ctrl_putter_.getPosition()), 2. * M_PI) <
+            putter_pos_threshold_ &&
+        start_pump_)
+    {
+      ctrl_pump_.setCommand(500);
+      if (!is_pumping_)
       {
         last_pump_time_ = ros::Time::now();
-        start_pump_flag_ = true;
+        is_pumping_ = true;
       }
     }
-    if (ros::Time::now() - last_pump_time_ > pump_duration_)
+
+    // finish shooting
+    if ((ros::Time::now() - last_pump_time_).toSec() > pump_duration_ && is_pumping_)
     {
-      ctrl_pump_.setCommand(0);    // stop
-      ctrl_putter_.setCommand(0);  // cylinder recovery
+      ctrl_pump_.setCommand(0);
+      ctrl_putter_.setCommand(0);
       last_shoot_time_ = time;
-      start_pump_flag_ = false;
+      is_pumping_ = false;
+      start_shoot_ = false;
+      start_pump_ = false;
     }
   }
   checkBlock(time);
@@ -60,8 +82,8 @@ void PneumaticController::stop(const ros::Time& time, const ros::Duration& perio
     ROS_INFO("[Shooter] Enter STOP");
 
     ctrl_trigger_.setCommand(ctrl_trigger_.joint_.getPosition());
-    ctrl_putter_.setCommand(0);
-    ctrl_pump_.setCommand(0);
+    ctrl_putter_.setCommand(0.);
+    ctrl_pump_.setCommand(0.);
   }
 }
 
