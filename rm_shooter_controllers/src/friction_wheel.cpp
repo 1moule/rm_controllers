@@ -34,15 +34,24 @@ void FrictionWheelController::stop(const ros::Time& time, const ros::Duration& p
 
 void FrictionWheelController::push(const ros::Time& time, const ros::Duration& period)
 {
+  if (state_changed_)
+  {  // on enter
+    state_changed_ = false;
+    ROS_INFO("[Shooter] Enter PUSH");
+  }
   if ((cmd_.speed == cmd_.SPEED_ZERO_FOR_TEST && (ros::Time::now() - last_shoot_time_).toSec() >= 1. / cmd_.hz) ||
       (ctrl_friction_l_.joint_.getVelocity() >= push_qd_threshold_ * ctrl_friction_l_.command_ &&
        ctrl_friction_l_.joint_.getVelocity() > M_PI &&
        ctrl_friction_r_.joint_.getVelocity() <= push_qd_threshold_ * ctrl_friction_r_.command_ &&
        ctrl_friction_r_.joint_.getVelocity() < -M_PI && (ros::Time::now() - last_shoot_time_).toSec() >= 1. / cmd_.hz))
   {  // Time to shoot!!!
-    ctrl_trigger_.setCommand(ctrl_trigger_.command_struct_.position_ -
-                             2. * M_PI / static_cast<double>(push_per_rotation_));
-    last_shoot_time_ = time;
+    if (std::fmod(std::abs(ctrl_trigger_.command_struct_.position_ - ctrl_trigger_.getPosition()), 2. * M_PI) <
+        config_.forward_push_threshold)
+    {
+      ctrl_trigger_.setCommand(ctrl_trigger_.command_struct_.position_ -
+                               2. * M_PI / static_cast<double>(push_per_rotation_));
+      last_shoot_time_ = time;
+    }
   }
   else
     ROS_DEBUG("[Shooter] Wait for friction wheel");
@@ -67,5 +76,7 @@ void FrictionWheelController::ctrlUpdate(const ros::Time& time, const ros::Durat
   ctrl_friction_r_.update(time, period);
   ctrl_trigger_.update(time, period);
 }
+
 }  // namespace rm_shooter_controllers
+
 PLUGINLIB_EXPORT_CLASS(rm_shooter_controllers::FrictionWheelController, controller_interface::ControllerBase)
