@@ -66,7 +66,7 @@ public:
   Controller() = default;
   bool init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& root_nh, ros::NodeHandle& controller_nh) override;
   void update(const ros::Time& time, const ros::Duration& period) override;
-  void starting(const ros::Time& /*time*/) override;
+  void starting(const ros::Time& time) override;
 
 protected:
   virtual void stop(const ros::Time& time, const ros::Duration& period) = 0;

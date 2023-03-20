@@ -10,12 +10,21 @@ bool PneumaticController::init(hardware_interface::RobotHW* robot_hw, ros::NodeH
   ros::NodeHandle nh_trigger = ros::NodeHandle(controller_nh, "trigger");
   ros::NodeHandle nh_putter = ros::NodeHandle(controller_nh, "putter");
   ros::NodeHandle nh_pump = ros::NodeHandle(controller_nh, "pump");
+  gpio_pub_ = controller_nh.advertise<rm_msgs::GpioData>("/controllers/gpio_controller/command", 1);
   if (!controller_nh.getParam("putter_pos_threshold", putter_pos_threshold_))
-    ROS_ERROR("putter position threshold no defined (namespace: %s)", controller_nh.getNamespace().c_str());
+    ROS_ERROR("Putter position threshold no defined (namespace: %s)", controller_nh.getNamespace().c_str());
+  if (!controller_nh.getParam("forward_distance", forward_distance_))
+    ROS_ERROR("Forward distance no defined (namespace: %s)", controller_nh.getNamespace().c_str());
   if (!controller_nh.getParam("pump_duration", pump_duration_))
-    ROS_ERROR("putter duration no defined (namespace: %s)", controller_nh.getNamespace().c_str());
+    ROS_ERROR("Putter duration no defined (namespace: %s)", controller_nh.getNamespace().c_str());
   return (ctrl_trigger_.init(effort_joint_interface_, nh_trigger) &&
           ctrl_putter_.init(effort_joint_interface_, nh_putter) && ctrl_pump_.init(effort_joint_interface_, nh_pump));
+}
+
+void PneumaticController::starting(const ros::Time& time)
+{
+  Controller::starting(time);
+  putter_initial_pos_ = ctrl_putter_.joint_.getPosition();
 }
 
 void PneumaticController::push(const ros::Time& time, const ros::Duration& period)
@@ -35,7 +44,6 @@ void PneumaticController::push(const ros::Time& time, const ros::Duration& perio
       ctrl_trigger_.setCommand(ctrl_trigger_.command_struct_.position_ -
                                2. * M_PI / static_cast<double>(push_per_rotation_));
       ctrl_trigger_.update(time, period);
-      ROS_INFO_STREAM("trigger: " << ctrl_trigger_.command_struct_.position_);
       start_shoot_ = true;
     }
 
@@ -43,9 +51,8 @@ void PneumaticController::push(const ros::Time& time, const ros::Duration& perio
     if (std::fmod(std::abs(ctrl_trigger_.command_struct_.position_ - ctrl_trigger_.getPosition()), 2. * M_PI) <
         config_.forward_push_threshold)
     {
-      ctrl_putter_.setCommand(M_PI);
+      ctrl_putter_.setCommand(putter_initial_pos_ + forward_distance_);
       ctrl_putter_.update(time, period);
-      ROS_INFO_STREAM("putter: " << ctrl_putter_.command_struct_.position_);
       start_pump_ = true;
     }
 
@@ -54,7 +61,7 @@ void PneumaticController::push(const ros::Time& time, const ros::Duration& perio
             putter_pos_threshold_ &&
         start_pump_)
     {
-      ctrl_pump_.setCommand(500);
+      ctrl_pump_.setCommand(qd_des_);
       ctrl_pump_.update(time, period);
       if (!is_pumping_)
       {
@@ -66,8 +73,10 @@ void PneumaticController::push(const ros::Time& time, const ros::Duration& perio
     // finish shooting
     if ((ros::Time::now() - last_pump_time_).toSec() > pump_duration_ && is_pumping_)
     {
+      data_.gpio_state[0] = 1;
+      gpio_pub_.publish(data_);
       ctrl_pump_.setCommand(0);
-      ctrl_putter_.setCommand(0);
+      ctrl_putter_.setCommand(putter_initial_pos_);
       last_shoot_time_ = time;
       is_pumping_ = false;
       start_shoot_ = false;
