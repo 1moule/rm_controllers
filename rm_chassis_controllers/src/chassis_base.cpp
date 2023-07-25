@@ -67,6 +67,10 @@ bool ChassisBase<T...>::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
   enable_odom_tf_ = getParam(controller_nh, "enable_odom_tf", true);
   publish_odom_tf_ = getParam(controller_nh, "publish_odom_tf", false);
 
+  ros::NodeHandle yaw_vel_nh(controller_nh, "yaw_vel");
+  k_yaw_vel_ = getParam(yaw_vel_nh, "k_yaw_vel", 0.);
+  yaw_vel_ = std::make_shared<YawVel>(yaw_vel_nh);
+
   // Get and check params for covariances
   XmlRpc::XmlRpcValue twist_cov_list;
   controller_nh.getParam("twist_covariance_diagonal", twist_cov_list);
@@ -157,6 +161,7 @@ void ChassisBase<T...>::update(const ros::Time& time, const ros::Duration& perio
   }
 
   updateOdom(time, period);
+  updateYawVel();
 
   switch (state_)
   {
@@ -199,7 +204,7 @@ void ChassisBase<T...>::follow(const ros::Time& time, const ros::Duration& perio
               roll, pitch, yaw);
     double follow_error = angles::shortest_angular_distance(yaw, 0);
     pid_follow_.computeCommand(-follow_error, period);
-    vel_cmd_.z = pid_follow_.getCurrentCmd();
+    vel_cmd_.z = pid_follow_.getCurrentCmd() + k_yaw_vel_ * yaw_vel_->angular_->output();
   }
   catch (tf2::TransformException& ex)
   {
@@ -409,6 +414,20 @@ void ChassisBase<T...>::tfVelToBase(const std::string& from)
   {
     ROS_WARN("%s", ex.what());
   }
+}
+
+template <typename... T>
+void ChassisBase<T...>::updateYawVel()
+{
+  double tf_period = odom2yaw_.header.stamp.toSec() - last_odom2yaw_.header.stamp.toSec();
+  double last_angular_position_x, last_angular_position_y, last_angular_position_z, angular_position_x,
+      angular_position_y, angular_position_z;
+  quatToRPY(odom2yaw_.transform.rotation, angular_position_x, angular_position_y, angular_position_z);
+  quatToRPY(last_odom2yaw_.transform.rotation, last_angular_position_x, last_angular_position_y,
+            last_angular_position_z);
+  double angular_vel = angles::shortest_angular_distance(last_angular_position_z, angular_position_z) / tf_period;
+  yaw_vel_->update(angular_vel, tf_period);
+  last_odom2yaw_ = odom2yaw_;
 }
 
 template <typename... T>

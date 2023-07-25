@@ -48,6 +48,7 @@
 #include <geometry_msgs/Vector3Stamped.h>
 #include <nav_msgs/Odometry.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <realtime_tools/realtime_publisher.h>
 
 namespace rm_chassis_controllers
 {
@@ -57,6 +58,54 @@ struct Command
   rm_msgs::ChassisCmd cmd_chassis_;
   ros::Time stamp_;
 };
+
+class YawVel
+{
+public:
+  YawVel(const ros::NodeHandle& nh)
+  {
+    double num_data;
+    nh.param("num_data", num_data, 20.0);
+    nh.param("debug", is_debug_, true);
+    angular_ = std::make_shared<MovingAverageFilter<double>>(num_data);
+//    if (is_debug_)
+//    {
+//      real_pub_.reset(new realtime_tools::RealtimePublisher<double>(nh, "real", 1));
+//      filtered_pub_.reset(new realtime_tools::RealtimePublisher<double>(nh, "filtered", 1));
+//    }
+  }
+  std::shared_ptr<MovingAverageFilter<double>> angular_;
+  void update(double angular_vel, double period)
+  {
+    if (period < 0)
+      return;
+    if (period > 0.1)
+    {
+      angular_->clear();
+    }
+    angular_->input(angular_vel);
+//    if (is_debug_ && loop_count_ % 10 == 0)
+//    {
+//      if (real_pub_->trylock())
+//      {
+//        real_pub_->msg_ = angular_vel;
+//        real_pub_->unlockAndPublish();
+//      }
+//      if (filtered_pub_->trylock())
+//      {
+//        filtered_pub_->msg_ = angular_vel;
+//        filtered_pub_->unlockAndPublish();
+//      }
+//    }
+    loop_count_++;
+  }
+
+private:
+  bool is_debug_;
+  int loop_count_;
+  std::shared_ptr<realtime_tools::RealtimePublisher<double>> real_pub_{}, filtered_pub_{};
+};
+
 template <typename... T>
 class ChassisBase : public controller_interface::MultiInterfaceController<T...>
 {
@@ -139,6 +188,7 @@ protected:
    *
    * @param msg This expresses velocity in free space broken into its linear and angular parts.
    */
+  void updateYawVel();
   void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg);
   void outsideOdomCallback(const nav_msgs::Odometry::ConstPtr& msg);
 
@@ -163,12 +213,12 @@ protected:
   std::string follow_source_frame_{}, command_source_frame_{};
 
   ros::Time last_publish_time_;
-  geometry_msgs::TransformStamped odom2base_{};
+  geometry_msgs::TransformStamped odom2base_{}, last_odom2yaw_{}, odom2yaw_{};
   tf2::Transform world2odom_;
   geometry_msgs::Vector3 vel_cmd_{};  // x, y
   control_toolbox::Pid pid_follow_;
 
-  std::shared_ptr<realtime_tools::RealtimePublisher<nav_msgs::Odometry> > odom_pub_;
+  std::shared_ptr<realtime_tools::RealtimePublisher<nav_msgs::Odometry>> odom_pub_;
   rm_common::TfRtBroadcaster tf_broadcaster_{};
   ros::Subscriber outside_odom_sub_;
   ros::Subscriber cmd_chassis_sub_;
@@ -176,6 +226,10 @@ protected:
   Command cmd_struct_;
   realtime_tools::RealtimeBuffer<Command> cmd_rt_buffer_;
   realtime_tools::RealtimeBuffer<nav_msgs::Odometry> odom_buffer_;
+
+  // Yaw
+  double k_yaw_vel_;
+  std::shared_ptr<YawVel> yaw_vel_;
 };
 
 }  // namespace rm_chassis_controllers
