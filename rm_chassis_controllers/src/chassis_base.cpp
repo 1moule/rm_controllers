@@ -159,7 +159,15 @@ void ChassisBase<T...>::update(const ros::Time& time, const ros::Duration& perio
     state_ = cmd_chassis.mode;
     state_changed_ = true;
   }
-
+  try
+  {
+    odom2yaw_ = robot_state_handle_.lookupTransform("odom", "yaw", time - ros::Duration(0.001));
+  }
+  catch (tf2::TransformException& ex)
+  {
+    ROS_WARN("%s", ex.what());
+    return;
+  }
   updateOdom(time, period);
   updateYawVel();
 

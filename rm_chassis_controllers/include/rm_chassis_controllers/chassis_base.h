@@ -68,11 +68,11 @@ public:
     nh.param("num_data", num_data, 20.0);
     nh.param("debug", is_debug_, true);
     angular_ = std::make_shared<MovingAverageFilter<double>>(num_data);
-//    if (is_debug_)
-//    {
-//      real_pub_.reset(new realtime_tools::RealtimePublisher<double>(nh, "real", 1));
-//      filtered_pub_.reset(new realtime_tools::RealtimePublisher<double>(nh, "filtered", 1));
-//    }
+    if (is_debug_)
+    {
+      real_pub_.reset(new realtime_tools::RealtimePublisher<std_msgs::Float64>(nh, "real", 1));
+      filtered_pub_.reset(new realtime_tools::RealtimePublisher<std_msgs::Float64>(nh, "filtered", 1));
+    }
   }
   std::shared_ptr<MovingAverageFilter<double>> angular_;
   void update(double angular_vel, double period)
@@ -84,26 +84,26 @@ public:
       angular_->clear();
     }
     angular_->input(angular_vel);
-//    if (is_debug_ && loop_count_ % 10 == 0)
-//    {
-//      if (real_pub_->trylock())
-//      {
-//        real_pub_->msg_ = angular_vel;
-//        real_pub_->unlockAndPublish();
-//      }
-//      if (filtered_pub_->trylock())
-//      {
-//        filtered_pub_->msg_ = angular_vel;
-//        filtered_pub_->unlockAndPublish();
-//      }
-//    }
+    if (is_debug_ && loop_count_ % 10 == 0)
+    {
+      if (real_pub_->trylock())
+      {
+        real_pub_->msg_.data = angular_vel;
+        real_pub_->unlockAndPublish();
+      }
+      if (filtered_pub_->trylock())
+      {
+        filtered_pub_->msg_.data = angular_vel;
+        filtered_pub_->unlockAndPublish();
+      }
+    }
     loop_count_++;
   }
 
 private:
   bool is_debug_;
   int loop_count_;
-  std::shared_ptr<realtime_tools::RealtimePublisher<double>> real_pub_{}, filtered_pub_{};
+  std::shared_ptr<realtime_tools::RealtimePublisher<std_msgs::Float64>> real_pub_{}, filtered_pub_{};
 };
 
 template <typename... T>
