@@ -144,6 +144,7 @@ private:
   hardware_interface::ImuSensorHandle imu_sensor_handle_;
   bool has_imu_ = true;
   effort_controllers::JointPositionController ctrl_yaw_, ctrl_pitch_;
+  control_toolbox::Pid pid_yaw_vel_;
 
   std::shared_ptr<BulletSolver> bullet_solver_;
 

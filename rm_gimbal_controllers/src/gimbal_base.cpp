@@ -112,6 +112,10 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
   publish_rate_ = getParam(controller_nh, "publish_rate", 100.);
   error_pub_.reset(new realtime_tools::RealtimePublisher<rm_msgs::GimbalDesError>(controller_nh, "error", 100));
 
+  if (controller_nh.hasParam("pid_yaw_pos"))
+    if (!pid_yaw_vel_.init(ros::NodeHandle(controller_nh, "pid_yaw_pos")))
+      return false;
+
   return true;
 }
 
@@ -402,13 +406,14 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
   ctrl_pitch_.setCommand(pitch_des, pitch_vel_des + ctrl_pitch_.joint_.getVelocity() - angular_vel_pitch.y);
   ctrl_yaw_.update(time, period);
   ctrl_pitch_.update(time, period);
+  pid_yaw_vel_.computeCommand(ctrl_yaw_.joint_.getCommand() - ctrl_yaw_.joint_.getVelocity(), period);
   double resistance_compensation = 0.;
   if (std::abs(ctrl_yaw_.joint_.getVelocity()) > velocity_dead_zone_)
     resistance_compensation = (ctrl_yaw_.joint_.getVelocity() > 0 ? 1 : -1) * yaw_resistance_;
   else if (std::abs(ctrl_yaw_.joint_.getCommand()) > effort_dead_zone_)
     resistance_compensation = (ctrl_yaw_.joint_.getCommand() > 0 ? 1 : -1) * yaw_resistance_;
-  ctrl_yaw_.joint_.setCommand(ctrl_yaw_.joint_.getCommand() - k_chassis_vel_ * chassis_vel_->angular_->z() +
-                              yaw_k_v_ * yaw_vel_des + resistance_compensation);
+  ctrl_yaw_.joint_.setCommand(pid_yaw_vel_.getCurrentCmd() - k_chassis_vel_ * chassis_vel_->angular_->z() +
+                              yaw_k_v_ * ctrl_yaw_.joint_.getCommand() + resistance_compensation);
   ctrl_pitch_.joint_.setCommand(ctrl_pitch_.joint_.getCommand() + feedForward(time) + pitch_k_v_ * pitch_vel_des);
 }
 
