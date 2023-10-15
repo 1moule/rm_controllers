@@ -145,6 +145,7 @@ private:
   bool has_imu_ = true;
   effort_controllers::JointPositionController ctrl_yaw_, ctrl_pitch_;
   control_toolbox::Pid pid_yaw_vel_;
+  double last_target_yaw_pos_{};
 
   std::shared_ptr<BulletSolver> bullet_solver_;
 
