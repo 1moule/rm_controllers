@@ -142,10 +142,11 @@ private:
 
   rm_control::RobotStateHandle robot_state_handle_;
   hardware_interface::ImuSensorHandle imu_sensor_handle_;
+  hardware_interface::JointHandle yaw_handle_, pitch_handle_;
+  urdf::Inertial yaw_inertial_, pitch_inertial_;
   bool has_imu_ = true;
   effort_controllers::JointPositionController ctrl_yaw_, ctrl_pitch_;
-  control_toolbox::Pid pid_yaw_vel_;
-  double last_target_yaw_pos_{};
+  control_toolbox::Pid pid_yaw_vel_, pid_yaw_pos_, pid_pitch_vel_, pid_pitch_pos_;
 
   std::shared_ptr<BulletSolver> bullet_solver_;
 

@@ -113,7 +113,10 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
   error_pub_.reset(new realtime_tools::RealtimePublisher<rm_msgs::GimbalDesError>(controller_nh, "error", 100));
 
   if (controller_nh.hasParam("pid_yaw_pos"))
-    if (!pid_yaw_vel_.init(ros::NodeHandle(controller_nh, "pid_yaw_pos")))
+    if (!pid_yaw_pos_.init(ros::NodeHandle(controller_nh, "pid_yaw_pos")))
+      return false;
+  if (controller_nh.hasParam("pid_yaw_vel"))
+    if (!pid_yaw_vel_.init(ros::NodeHandle(controller_nh, "pid_yaw_vel")))
       return false;
 
   return true;
@@ -401,30 +404,45 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
       ROS_WARN("%s", ex.what());
     }
   }
-  //  else if (state_ == DIRECT)
-  //  {
-  //    yaw_vel_des=cmd_gimbal_.target_pos.point.y-
-  //  }
 
-  ctrl_yaw_.setCommand(yaw_des, yaw_vel_des + ctrl_yaw_.joint_.getVelocity() - angular_vel_yaw.z);
-  ctrl_pitch_.setCommand(pitch_des, pitch_vel_des + ctrl_pitch_.joint_.getVelocity() - angular_vel_pitch.y);
-  ctrl_yaw_.update(time, period);
-  ctrl_pitch_.update(time, period);
-  double vel_direction = ctrl_yaw_.joint_.getCommand() > 0 ? 1 : -1;
-  double vel_cmd{};
-  if (abs(ctrl_yaw_.joint_.getCommand()) < abs(yaw_vel_des))
-    vel_cmd = ctrl_yaw_.joint_.getCommand();
-  else
-    vel_cmd = yaw_vel_des * vel_direction;
-  pid_yaw_vel_.computeCommand(vel_cmd - ctrl_yaw_.joint_.getVelocity(), period);
+  // out loop, position loop
+  pid_yaw_pos_.computeCommand(yaw_des - yaw_handle_.getPosition(), period);
+  pid_pitch_pos_.computeCommand(yaw_des - pitch_handle_.getPosition(), period);
+
+  // inner loop, vel loop
+  pid_yaw_vel_.computeCommand(pid_yaw_pos_.getCurrentCmd() + yaw_k_v_ * yaw_vel_des - yaw_handle_.getVelocity(), period);
+  pid_pitch_vel_.computeCommand(
+      pid_pitch_pos_.getCurrentCmd() + pitch_k_v_ * pitch_vel_des - pitch_handle_.getVelocity(), period);
+
+  // limit acc
+  double acc_yaw = pid_yaw_vel_.getCurrentCmd();
+
+  // compute inertial
+  double yaw_real_inertial =
+      yaw_inertial_.izz +
+      sin(pitch_handle_.getPosition()) * (sin(pitch_handle_.getPosition()) * pitch_inertial_.iyy +
+                                          cos(pitch_handle_.getPosition() * pitch_inertial_.iyz)) +
+      cos(pitch_handle_.getPosition() * (sin(pitch_handle_.getPosition()) * pitch_inertial_.iyz +
+                                         cos(pitch_handle_.getPosition() * pitch_inertial_.iyz)));
+
+  // compensate product of inertial
+  double yaw_inertial_product_compensation =
+      (yaw_inertial_.ixy * sin(pitch_handle_.getPosition()) - yaw_inertial_.ixz * cos(pitch_handle_.getPosition())) *
+      acc_yaw;
+
+  // compensate mechanical resistance
   double resistance_compensation = 0.;
   if (std::abs(ctrl_yaw_.joint_.getVelocity()) > velocity_dead_zone_)
     resistance_compensation = (ctrl_yaw_.joint_.getVelocity() > 0 ? 1 : -1) * yaw_resistance_;
   else if (std::abs(ctrl_yaw_.joint_.getCommand()) > effort_dead_zone_)
     resistance_compensation = (ctrl_yaw_.joint_.getCommand() > 0 ? 1 : -1) * yaw_resistance_;
-  ctrl_yaw_.joint_.setCommand(pid_yaw_vel_.getCurrentCmd() - k_chassis_vel_ * chassis_vel_->angular_->z() +
-                              yaw_k_v_ * vel_cmd + resistance_compensation);
-  ctrl_pitch_.joint_.setCommand(ctrl_pitch_.joint_.getCommand() + feedForward(time) + pitch_k_v_ * pitch_vel_des);
+
+  // torque des
+  double yaw_torque_des =
+      yaw_inertial_product_compensation + yaw_real_inertial * acc_yaw + feedForward(time) + resistance_compensation;
+
+  // set torque
+  yaw_handle_.setCommand(yaw_torque_des);
 }
 
 double Controller::feedForward(const ros::Time& time)
