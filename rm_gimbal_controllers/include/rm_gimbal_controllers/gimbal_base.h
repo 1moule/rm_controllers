@@ -136,6 +136,8 @@ private:
                        const urdf::JointConstSharedPtr& joint_urdf);
   void moveJoint(const ros::Time& time, const ros::Duration& period);
   double feedForward(const ros::Time& time);
+  double resistanceCompensation(double estimated_resistance, double velocity, double acceleration, double vel_threshold,
+                                double acc_threshold);
   void updateChassisVel();
   void commandCB(const rm_msgs::GimbalCmdConstPtr& msg);
   void trackCB(const rm_msgs::TrackDataConstPtr& msg);
@@ -178,7 +180,7 @@ private:
 
   // Resistance compensation
   double yaw_resistance_;
-  double velocity_dead_zone_, effort_dead_zone_;
+  double velocity_threshold_, acceleration_threshold_;
 
   // Chassis
   double k_chassis_vel_;

@@ -64,8 +64,8 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
 
   ros::NodeHandle resistance_compensation_nh(controller_nh, "yaw/resistance_compensation");
   yaw_resistance_ = getParam(resistance_compensation_nh, "resistance", 0.);
-  velocity_dead_zone_ = getParam(resistance_compensation_nh, "velocity_dead_zone", 0.);
-  effort_dead_zone_ = getParam(resistance_compensation_nh, "effort_dead_zone", 0.);
+  velocity_threshold_ = getParam(resistance_compensation_nh, "velocity_threshold", 0.);
+  acceleration_threshold_ = getParam(resistance_compensation_nh, "acceleration_threshold", 0.);
 
   k_chassis_vel_ = getParam(controller_nh, "yaw/k_chassis_vel", 0.);
   ros::NodeHandle chassis_vel_nh(controller_nh, "chassis_vel");
@@ -405,11 +405,11 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
     }
   }
 
-  // out loop, position loop
+  // position loop
   pid_yaw_pos_.computeCommand(yaw_des - yaw_handle_.getPosition(), period);
   pid_pitch_pos_.computeCommand(yaw_des - pitch_handle_.getPosition(), period);
 
-  // inner loop, vel loop
+  // velocity loop
   pid_yaw_vel_.computeCommand(pid_yaw_pos_.getCurrentCmd() + yaw_k_v_ * yaw_vel_des - yaw_handle_.getVelocity(), period);
   pid_pitch_vel_.computeCommand(
       pid_pitch_pos_.getCurrentCmd() + pitch_k_v_ * pitch_vel_des - pitch_handle_.getVelocity(), period);
@@ -431,15 +431,13 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
       acc_yaw;
 
   // compensate mechanical resistance
-  double resistance_compensation = 0.;
-  if (std::abs(ctrl_yaw_.joint_.getVelocity()) > velocity_dead_zone_)
-    resistance_compensation = (ctrl_yaw_.joint_.getVelocity() > 0 ? 1 : -1) * yaw_resistance_;
-  else if (std::abs(ctrl_yaw_.joint_.getCommand()) > effort_dead_zone_)
-    resistance_compensation = (ctrl_yaw_.joint_.getCommand() > 0 ? 1 : -1) * yaw_resistance_;
+  double yaw_resistance_compensation =
+      resistanceCompensation(yaw_resistance_, yaw_handle_.getVelocity(), pid_yaw_vel_.getCurrentCmd(),
+                             velocity_threshold_, acceleration_threshold_);
 
   // torque des
   double yaw_torque_des =
-      yaw_inertial_product_compensation + yaw_real_inertial * acc_yaw + feedForward(time) + resistance_compensation;
+      yaw_inertial_product_compensation + yaw_real_inertial * acc_yaw + feedForward(time) + yaw_resistance_compensation;
 
   // set torque
   yaw_handle_.setCommand(yaw_torque_des);
@@ -461,6 +459,24 @@ double Controller::feedForward(const ros::Time& time)
     feedforward -= mass_origin.cross(gravity_compensation).y();
   }
   return feedforward;
+}
+
+double Controller::resistanceCompensation(double estimated_resistance, double velocity, double acceleration,
+                                          double vel_threshold, double acc_threshold)
+{
+  double resistance_compensation{};
+  double vel_direction = velocity > 0 ? 1 : -1;
+  double acc_direction = acceleration > 0 ? 1 : -1;
+  if (abs(velocity) >= vel_threshold)
+    resistance_compensation = estimated_resistance * vel_direction;
+  else
+  {
+    if (abs(acceleration) < acc_threshold)
+      resistance_compensation = estimated_resistance * acc_direction * pow(acceleration / acc_threshold, 2);
+    else
+      resistance_compensation = estimated_resistance * acceleration / acc_threshold;
+  }
+  return resistance_compensation;
 }
 
 void Controller::updateChassisVel()
