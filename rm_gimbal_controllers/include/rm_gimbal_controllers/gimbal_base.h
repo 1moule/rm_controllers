@@ -145,7 +145,7 @@ private:
   rm_control::RobotStateHandle robot_state_handle_;
   hardware_interface::ImuSensorHandle imu_sensor_handle_;
   hardware_interface::JointHandle yaw_handle_, pitch_handle_;
-  urdf::Inertial yaw_inertial_, pitch_inertial_;
+  Eigen::Matrix3d yaw_inertial_, pitch_inertial_;
   bool has_imu_ = true;
   effort_controllers::JointPositionController ctrl_yaw_, ctrl_pitch_;
   control_toolbox::Pid pid_yaw_vel_, pid_yaw_pos_, pid_pitch_vel_, pid_pitch_pos_;
@@ -179,8 +179,8 @@ private:
   double pitch_k_v_;
 
   // Resistance compensation
-  double yaw_resistance_;
-  double velocity_threshold_, acceleration_threshold_;
+  double yaw_resistance_, pitch_resistance_;
+  double yaw_velocity_threshold_, yaw_acceleration_threshold_, pitch_velocity_threshold_, pitch_acceleration_threshold_;
 
   // Chassis
   double k_chassis_vel_;
