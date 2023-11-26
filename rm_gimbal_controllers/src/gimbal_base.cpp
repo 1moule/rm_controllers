@@ -86,13 +86,13 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
   {
     for (int i = 0; i < 3; i++)
       for (int j = 0; j < 3; j++)
-        yaw_inertial_(i, j) = xml_rpc_value[i][j];
+        yaw_inertial_(i, j) = (double)xml_rpc_value[i][j];
   }
   if (nh_pitch.getParam("pitch_inertial", xml_rpc_value))
   {
     for (int i = 0; i < 3; i++)
       for (int j = 0; j < 3; j++)
-        pitch_inertial_(i, j) = xml_rpc_value[i][j];
+        pitch_inertial_(i, j) = (double)xml_rpc_value[i][j];
   }
   hardware_interface::EffortJointInterface* effort_joint_interface =
       robot_hw->get<hardware_interface::EffortJointInterface>();
@@ -131,17 +131,11 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
   publish_rate_ = getParam(controller_nh, "publish_rate", 100.);
   error_pub_.reset(new realtime_tools::RealtimePublisher<rm_msgs::GimbalDesError>(controller_nh, "error", 100));
 
-  if (nh_yaw.hasParam("pid_yaw_pos"))
-    if (!pid_yaw_pos_.init(ros::NodeHandle(nh_yaw, "pid_yaw_pos")))
-      return false;
   if (nh_yaw.hasParam("pid_yaw_vel"))
     if (!pid_yaw_vel_.init(ros::NodeHandle(nh_yaw, "pid_yaw_vel")))
       return false;
-  if (nh_pitch.hasParam("pid_pitch_pos"))
-    if (!pid_yaw_pos_.init(ros::NodeHandle(nh_pitch, "pid_pitch_pos")))
-      return false;
   if (nh_pitch.hasParam("pid_pitch_vel"))
-    if (!pid_yaw_vel_.init(ros::NodeHandle(nh_pitch, "pid_pitch_vel")))
+    if (!pid_pitch_vel_.init(ros::NodeHandle(nh_pitch, "pid_pitch_vel")))
       return false;
 
   return true;
@@ -431,13 +425,16 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
   }
 
   // position loop
-  pid_yaw_pos_.computeCommand(yaw_des - yaw_handle_.getPosition(), period);
-  pid_pitch_pos_.computeCommand(yaw_des - pitch_handle_.getPosition(), period);
+  ctrl_yaw_.setCommand(yaw_des);
+  ctrl_pitch_.setCommand(pitch_des);
+  ctrl_yaw_.update(time, period);
+  ctrl_pitch_.update(time, period);
 
   // velocity loop
-  pid_yaw_vel_.computeCommand(pid_yaw_pos_.getCurrentCmd() + yaw_k_v_ * yaw_vel_des - yaw_handle_.getVelocity(), period);
+  pid_yaw_vel_.computeCommand(ctrl_yaw_.joint_.getCommand() + yaw_k_v_ * yaw_vel_des - yaw_handle_.getVelocity(),
+                              period);
   pid_pitch_vel_.computeCommand(
-      pid_pitch_pos_.getCurrentCmd() + pitch_k_v_ * pitch_vel_des - pitch_handle_.getVelocity(), period);
+      ctrl_pitch_.joint_.getCommand() + pitch_k_v_ * pitch_vel_des - pitch_handle_.getVelocity(), period);
 
   // limit acc
   double acc_yaw = pid_yaw_vel_.getCurrentCmd();
