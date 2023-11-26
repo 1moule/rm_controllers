@@ -99,6 +99,8 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
   if (!ctrl_yaw_.init(effort_joint_interface, nh_yaw) || !ctrl_pitch_.init(effort_joint_interface, nh_pitch))
     return false;
   robot_state_handle_ = robot_hw->get<rm_control::RobotStateInterface>()->getHandle("robot_state");
+  yaw_handle_ = robot_hw->get<hardware_interface::EffortJointInterface>()->getHandle(ctrl_yaw_.joint_.getName());
+  pitch_handle_ = robot_hw->get<hardware_interface::EffortJointInterface>()->getHandle(ctrl_pitch_.joint_.getName());
   if (!controller_nh.hasParam("imu_name"))
     has_imu_ = false;
   if (has_imu_)
@@ -129,11 +131,17 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
   publish_rate_ = getParam(controller_nh, "publish_rate", 100.);
   error_pub_.reset(new realtime_tools::RealtimePublisher<rm_msgs::GimbalDesError>(controller_nh, "error", 100));
 
-  if (controller_nh.hasParam("pid_yaw_pos"))
-    if (!pid_yaw_pos_.init(ros::NodeHandle(controller_nh, "pid_yaw_pos")))
+  if (nh_yaw.hasParam("pid_yaw_pos"))
+    if (!pid_yaw_pos_.init(ros::NodeHandle(nh_yaw, "pid_yaw_pos")))
       return false;
-  if (controller_nh.hasParam("pid_yaw_vel"))
-    if (!pid_yaw_vel_.init(ros::NodeHandle(controller_nh, "pid_yaw_vel")))
+  if (nh_yaw.hasParam("pid_yaw_vel"))
+    if (!pid_yaw_vel_.init(ros::NodeHandle(nh_yaw, "pid_yaw_vel")))
+      return false;
+  if (nh_pitch.hasParam("pid_pitch_pos"))
+    if (!pid_yaw_pos_.init(ros::NodeHandle(nh_pitch, "pid_pitch_pos")))
+      return false;
+  if (nh_pitch.hasParam("pid_pitch_vel"))
+    if (!pid_yaw_vel_.init(ros::NodeHandle(nh_pitch, "pid_pitch_vel")))
       return false;
 
   return true;
@@ -441,10 +449,8 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
   double pitch_real_inertial = pitch_inertial_(1, 1);
 
   // compensate product of inertial
-  double yaw_inertial_product_compensation = (yaw_inertial_(0, 1) * sin(pitch_handle_.getPosition()) -
-                                              yaw_inertial_(0, 2) * cos(pitch_handle_.getPosition())) *
-                                             acc_yaw;
-  double pitch_inertial_product_compensation;
+  double yaw_inertial_product_compensation{};
+  double pitch_inertial_product_compensation{};
 
   // compensate mechanical resistance
   double yaw_resistance_compensation =
