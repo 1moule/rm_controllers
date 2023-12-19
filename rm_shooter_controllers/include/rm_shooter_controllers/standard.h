@@ -43,6 +43,7 @@
 #include <hardware_interface/joint_command_interface.h>
 #include <rm_common/hardware_interface/robot_state_interface.h>
 #include <rm_common/ros_utilities.h>
+#include <rm_common/traj_gen.h>
 #include <realtime_tools/realtime_publisher.h>
 #include <dynamic_reconfigure/server.h>
 #include <rm_shooter_controllers/ShooterConfig.h>
@@ -58,6 +59,7 @@ struct Config
   double block_effort, block_speed, block_duration, block_overtime, anti_block_angle, anti_block_threshold,
       forward_push_threshold, exit_push_threshold;
   double extra_wheel_speed;
+  double trigger_inertia_, max_trigger_tau_, tolerance_;
 };
 
 class Controller : public controller_interface::MultiInterfaceController<hardware_interface::EffortJointInterface,
@@ -87,6 +89,8 @@ private:
   effort_controllers::JointPositionController ctrl_trigger_;
   int push_per_rotation_{};
   double push_wheel_speed_threshold_{};
+  double trigger_pos_des_{};
+  double s[3]{};
   bool dynamic_reconfig_initialized_ = false;
   bool state_changed_ = false;
   bool maybe_block_ = false;
@@ -106,7 +110,9 @@ private:
   rm_msgs::ShootCmd cmd_;
   std::shared_ptr<realtime_tools::RealtimePublisher<rm_msgs::ShootState>> shoot_state_pub_;
   ros::Subscriber cmd_subscriber_;
+  ros::Publisher traj_pub_;
   dynamic_reconfigure::Server<rm_shooter_controllers::ShooterConfig>* d_srv_{};
+  MinTimeTraj<double> min_time_traj_;
 };
 
 }  // namespace rm_shooter_controllers
