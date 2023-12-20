@@ -128,12 +128,16 @@ void Controller::update(const ros::Time& time, const ros::Duration& period)
     shoot_state_pub_->unlockAndPublish();
   }
 
-  s[2] = min_time_traj_.getTau(s[0], s[1]);
-  s[1] += s[2] * period.toSec();
-  s[0] += s[1] * period.toSec();
-  std_msgs::Float64 msg;
-  msg.data = s[2];
-  traj_pub_.publish(msg);
+  if (!min_time_traj_.isReach())
+  {
+    s[2] = min_time_traj_.getTau(s[0], s[1]) / config_.trigger_inertia_;
+    s[1] += s[2] * period.toSec();
+    s[0] += s[1] * period.toSec();
+    std_msgs::Float64 msg;
+    msg.data = s[2];
+    traj_pub_.publish(msg);
+  }
+
   ctrl_trigger_.setCommand(s[0]);
   ctrl_trigger_.update(time, period);
   ctrl_friction_l_.update(time, period);
@@ -151,6 +155,8 @@ void Controller::stop(const ros::Time& time, const ros::Duration& period)
     ctrl_friction_r_.setCommand(0.);
     trigger_pos_des_ = ctrl_trigger_.joint_.getPosition();
     min_time_traj_.setTarget(trigger_pos_des_);
+    s[0] = ctrl_trigger_.joint_.getPosition();
+    s[1] = ctrl_trigger_.joint_.getVelocity();
   }
 }
 
@@ -183,6 +189,8 @@ void Controller::push(const ros::Time& time, const ros::Duration& period)
     {
       trigger_pos_des_ -= 2. * M_PI / static_cast<double>(push_per_rotation_);
       min_time_traj_.setTarget(trigger_pos_des_);
+      s[0] = ctrl_trigger_.joint_.getPosition();
+      s[1] = ctrl_trigger_.joint_.getVelocity();
       last_shoot_time_ = time;
     }
     // Check block
@@ -241,6 +249,8 @@ void Controller::normalize()
   double push_angle = 2. * M_PI / static_cast<double>(push_per_rotation_);
   trigger_pos_des_ = push_angle * std::floor((ctrl_trigger_.joint_.getPosition() + 0.01) / push_angle);
   min_time_traj_.setTarget(trigger_pos_des_);
+  s[0] = ctrl_trigger_.joint_.getPosition();
+  s[1] = ctrl_trigger_.joint_.getVelocity();
 }
 
 void Controller::reconfigCB(rm_shooter_controllers::ShooterConfig& config, uint32_t /*level*/)
