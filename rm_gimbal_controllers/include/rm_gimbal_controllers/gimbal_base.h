@@ -51,6 +51,10 @@
 #include <tf2_eigen/tf2_eigen.h>
 #include <Eigen/Eigen>
 #include <rm_common/filters/filters.h>
+#include <kdl/chainidsolver_recursive_newton_euler.hpp>
+#include <kdl_parser/kdl_parser.hpp>
+#include <kdl/tree.hpp>
+#include <urdf/model.h>
 
 namespace rm_gimbal_controllers
 {
@@ -135,7 +139,7 @@ private:
   bool setDesIntoLimit(double& real_des, double current_des, double base2gimbal_current_des,
                        const urdf::JointConstSharedPtr& joint_urdf);
   void moveJoint(const ros::Time& time, const ros::Duration& period);
-  double feedForward(const ros::Time& time);
+  KDL::JntArray feedForward(const ros::Time& time);
   void updateChassisVel();
   void commandCB(const rm_msgs::GimbalCmdConstPtr& msg);
   void trackCB(const rm_msgs::TrackDataConstPtr& msg);
@@ -168,6 +172,9 @@ private:
   geometry_msgs::Vector3 mass_origin_;
   double gravity_;
   bool enable_gravity_compensation_;
+  KDL::ChainIdSolver_RNE* chain_id_solver_;
+  urdf::Model model_{};
+  KDL::Chain chain_;
 
   // Input feedforward
   double yaw_k_v_;

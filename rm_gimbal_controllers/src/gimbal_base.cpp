@@ -61,6 +61,23 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
   mass_origin_.z = enable_feedforward ? (double)xml_rpc_value["mass_origin"][2] : 0.;
   gravity_ = enable_feedforward ? (double)xml_rpc_value["gravity"] : 0.;
   enable_gravity_compensation_ = enable_feedforward && (bool)xml_rpc_value["enable_gravity_compensation"];
+  if (!model_.initParam("robot_description"))
+  {
+    ROS_ERROR("Failed to init URDF from robot description");
+    return false;
+  }
+  KDL::Tree tree;
+  if (!kdl_parser::treeFromUrdfModel(model_, tree))
+  {
+    ROS_ERROR("Failed to extract kdl tree from xml robot description");
+    return false;
+  }
+  if (!tree.getChain("base_link", "pitch", chain_))
+  {
+    ROS_ERROR("Could not initialize chain object for base_link and pitch");
+    return false;
+  }
+  chain_id_solver_ = new KDL::ChainIdSolver_RNE(chain_, KDL::Vector(0., 0., -9.8));
 
   ros::NodeHandle resistance_compensation_nh(controller_nh, "yaw/resistance_compensation");
   yaw_resistance_ = getParam(resistance_compensation_nh, "resistance", 0.);
@@ -409,25 +426,23 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
     resistance_compensation = (ctrl_yaw_.joint_.getCommand() > 0 ? 1 : -1) * yaw_resistance_;
   ctrl_yaw_.joint_.setCommand(ctrl_yaw_.joint_.getCommand() - k_chassis_vel_ * chassis_vel_->angular_->z() +
                               yaw_k_v_ * yaw_vel_des + resistance_compensation);
-  ctrl_pitch_.joint_.setCommand(ctrl_pitch_.joint_.getCommand() + feedForward(time) + pitch_k_v_ * pitch_vel_des);
+  ctrl_pitch_.joint_.setCommand(ctrl_pitch_.joint_.getCommand() + feedForward(time)(1) + pitch_k_v_ * pitch_vel_des);
 }
 
-double Controller::feedForward(const ros::Time& time)
+KDL::JntArray Controller::feedForward(const ros::Time& time)
 {
-  Eigen::Vector3d gravity(0, 0, -gravity_);
-  tf2::doTransform(gravity, gravity,
-                   robot_state_handle_.lookupTransform(ctrl_pitch_.joint_urdf_->child_link_name, "odom", time));
-  Eigen::Vector3d mass_origin(mass_origin_.x, 0, mass_origin_.z);
-  double feedforward = -mass_origin.cross(gravity).y();
-  if (enable_gravity_compensation_)
+  KDL::JntArray q(2), q_d(2), q_d_d(2), torques_(2);
+  KDL::Wrenches wrench(chain_.getNrOfSegments(), KDL::Wrench::Zero());
+  q(0) = ctrl_yaw_.joint_.getPosition();
+  q(1) = ctrl_pitch_.joint_.getPosition();
+  int solver_success = chain_id_solver_->CartToJnt(q, q_d, q_d_d, wrench, torques_);
+  if (solver_success >= 0)
+    return torques_;
+  else
   {
-    Eigen::Vector3d gravity_compensation(0, 0, gravity_);
-    tf2::doTransform(gravity_compensation, gravity_compensation,
-                     robot_state_handle_.lookupTransform(ctrl_pitch_.joint_urdf_->child_link_name,
-                                                         ctrl_pitch_.joint_urdf_->parent_link_name, time));
-    feedforward -= mass_origin.cross(gravity_compensation).y();
+    KDL::JntArray zero(2);
+    return zero;
   }
-  return feedforward;
 }
 
 void Controller::updateChassisVel()
