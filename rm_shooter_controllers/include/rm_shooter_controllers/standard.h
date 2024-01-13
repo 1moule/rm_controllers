@@ -84,12 +84,14 @@ private:
 
   hardware_interface::EffortJointInterface* effort_joint_interface_{};
   effort_controllers::JointVelocityController ctrl_friction_l_, ctrl_friction_r_;
+  std::vector<effort_controllers::JointVelocityController*> ctrls_friction_l_;
   effort_controllers::JointPositionController ctrl_trigger_;
   int push_per_rotation_{};
   double push_wheel_speed_threshold_{};
   bool dynamic_reconfig_initialized_ = false;
   bool state_changed_ = false;
   bool maybe_block_ = false;
+  bool friction_left_init_state_ = false;
 
   ros::Time last_shoot_time_, block_time_, last_block_time_;
   enum

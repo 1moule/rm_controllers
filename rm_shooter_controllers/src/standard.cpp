@@ -66,10 +66,23 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
   };
   d_srv_->setCallback(cb);
 
+  effort_joint_interface_ = robot_hw->get<hardware_interface::EffortJointInterface>();
+
+  XmlRpc::XmlRpcValue frictions_left, firctions_right;
+  controller_nh.getParam("frictions_left", frictions_left);
+  for (auto it : frictions_left)
+  {
+    ros::NodeHandle nh = ros::NodeHandle(controller_nh, "frictions_left/" + it.first);
+    effort_controllers::JointVelocityController* ctrl_friction_l = new effort_controllers::JointVelocityController;
+    if (!(friction_left_init_state_ &= ctrl_friction_l->init(effort_joint_interface_, nh)))
+      ctrls_friction_l_.push_back(ctrl_friction_l);
+    else
+      return false;
+  }
+
   ros::NodeHandle nh_friction_l = ros::NodeHandle(controller_nh, "friction_left");
   ros::NodeHandle nh_friction_r = ros::NodeHandle(controller_nh, "friction_right");
   ros::NodeHandle nh_trigger = ros::NodeHandle(controller_nh, "trigger");
-  effort_joint_interface_ = robot_hw->get<hardware_interface::EffortJointInterface>();
   return ctrl_friction_l_.init(effort_joint_interface_, nh_friction_l) &&
          ctrl_friction_r_.init(effort_joint_interface_, nh_friction_r) &&
          ctrl_trigger_.init(effort_joint_interface_, nh_trigger);
