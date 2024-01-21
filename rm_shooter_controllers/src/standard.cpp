@@ -72,9 +72,11 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
   controller_nh.getParam("frictions_left", frictions_left);
   for (auto it : frictions_left)
   {
+    double wheel_speed_offset;
     ros::NodeHandle nh = ros::NodeHandle(controller_nh, "frictions_left/" + it.first);
+    wheel_speed_offset_l_.push_back(nh.getParam("wheel_speed_offset", wheel_speed_offset) ? wheel_speed_offset : 0.);
     effort_controllers::JointVelocityController* ctrl_friction_l = new effort_controllers::JointVelocityController;
-    if (!(friction_left_init_state_ &= ctrl_friction_l->init(effort_joint_interface_, nh)))
+    if (ctrl_friction_l->init(effort_joint_interface_, nh))
       ctrls_friction_l_.push_back(ctrl_friction_l);
     else
       return false;
@@ -234,6 +236,9 @@ void Controller::setSpeed(const rm_msgs::ShootCmd& cmd)
 {
   ctrl_friction_l_.setCommand(cmd_.wheel_speed + config_.extra_wheel_speed);
   ctrl_friction_r_.setCommand(-cmd_.wheel_speed - config_.extra_wheel_speed);
+
+  for (int i = 0; i < ctrls_friction_l_.size(); i++)
+    ctrls_friction_l_[i]->setCommand(cmd_.wheel_speed + config_.extra_wheel_speed + wheel_speed_offset_l_[i]);
 }
 
 void Controller::normalize()
