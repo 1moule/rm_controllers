@@ -55,9 +55,9 @@ namespace rm_shooter_controllers
 {
 struct Config
 {
-  double block_effort, block_speed, block_duration, block_overtime, anti_block_angle, anti_block_threshold,
-      forward_push_threshold, exit_push_threshold;
-  double extra_wheel_speed;
+  double block_effort, block_speed, block_duration, block_overtime, anti_block_angle, anti_block_threshold;
+  double forward_push_threshold, exit_push_threshold;
+  double extra_wheel_speed, compute_offset;
 };
 
 class Controller : public controller_interface::MultiInterfaceController<hardware_interface::EffortJointInterface,

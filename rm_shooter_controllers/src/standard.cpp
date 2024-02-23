@@ -52,7 +52,8 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
               .anti_block_threshold = getParam(controller_nh, "anti_block_threshold", 0.),
               .forward_push_threshold = getParam(controller_nh, "forward_push_threshold", 0.1),
               .exit_push_threshold = getParam(controller_nh, "exit_push_threshold", 0.1),
-              .extra_wheel_speed = getParam(controller_nh, "extra_wheel_speed", 0.) };
+              .extra_wheel_speed = getParam(controller_nh, "extra_wheel_speed", 0.),
+              .compute_offset = getParam(controller_nh, "compute_offset", 0.) };
   config_rt_buffer.initRT(config_);
   push_per_rotation_ = getParam(controller_nh, "push_per_rotation", 0);
   push_wheel_speed_threshold_ = getParam(controller_nh, "push_wheel_speed_threshold", 0.);
@@ -226,7 +227,8 @@ void Controller::setSpeed(const rm_msgs::ShootCmd& cmd)
 void Controller::normalize()
 {
   double push_angle = 2. * M_PI / static_cast<double>(push_per_rotation_);
-  ctrl_trigger_.setCommand(push_angle * std::floor((ctrl_trigger_.joint_.getPosition() + 0.01) / push_angle));
+  ctrl_trigger_.setCommand(push_angle *
+                           std::floor((ctrl_trigger_.joint_.getPosition() + config_.compute_offset) / push_angle));
 }
 
 void Controller::reconfigCB(rm_shooter_controllers::ShooterConfig& config, uint32_t /*level*/)
@@ -244,6 +246,7 @@ void Controller::reconfigCB(rm_shooter_controllers::ShooterConfig& config, uint3
     config.forward_push_threshold = init_config.forward_push_threshold;
     config.exit_push_threshold = init_config.exit_push_threshold;
     config.extra_wheel_speed = init_config.extra_wheel_speed;
+    config.compute_offset = init_config.compute_offset;
     dynamic_reconfig_initialized_ = true;
   }
   Config config_non_rt{ .block_effort = config.block_effort,
@@ -254,7 +257,8 @@ void Controller::reconfigCB(rm_shooter_controllers::ShooterConfig& config, uint3
                         .anti_block_threshold = config.anti_block_threshold,
                         .forward_push_threshold = config.forward_push_threshold,
                         .exit_push_threshold = config.exit_push_threshold,
-                        .extra_wheel_speed = config.extra_wheel_speed };
+                        .extra_wheel_speed = config.extra_wheel_speed,
+                        .compute_offset = config.compute_offset };
   config_rt_buffer.writeFromNonRT(config_non_rt);
 }
 
