@@ -57,7 +57,7 @@ struct Config
 {
   double block_effort, block_speed, block_duration, block_overtime, anti_block_angle, anti_block_threshold;
   double forward_push_threshold, exit_push_threshold;
-  double extra_wheel_speed, compute_offset;
+  double extra_wheel_speed, calculated_offset;
 };
 
 class Controller : public controller_interface::MultiInterfaceController<hardware_interface::EffortJointInterface,
