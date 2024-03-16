@@ -83,6 +83,7 @@ BulletSolver::BulletSolver(ros::NodeHandle& controller_nh)
       new realtime_tools::RealtimePublisher<visualization_msgs::Marker>(controller_nh, "model_desire", 10));
   path_real_pub_.reset(
       new realtime_tools::RealtimePublisher<visualization_msgs::Marker>(controller_nh, "model_real", 10));
+  theta_pub_.reset(new realtime_tools::RealtimePublisher<std_msgs::Float64>(controller_nh, "theta", 10));
 }
 
 double BulletSolver::getResistanceCoefficient(double bullet_speed) const
@@ -183,6 +184,13 @@ bool BulletSolver::solve(geometry_msgs::Point pos, geometry_msgs::Vector3 vel, d
 
     if (count >= 20 || std::isnan(error))
       return false;
+  }
+  std_msgs::Float64 theta_msgs;
+  theta_msgs.data = theta;
+  if (theta_pub_->trylock())
+  {
+    theta_pub_->msg_ = theta_msgs;
+    theta_pub_->unlockAndPublish();
   }
   return true;
 }

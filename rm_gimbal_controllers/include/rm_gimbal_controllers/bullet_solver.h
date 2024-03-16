@@ -40,6 +40,7 @@
 #include <realtime_tools/realtime_publisher.h>
 #include <realtime_tools/realtime_buffer.h>
 #include <geometry_msgs/TransformStamped.h>
+#include <std_msgs/Float64.h>
 #include <visualization_msgs/Marker.h>
 #include <rm_gimbal_controllers/BulletSolverConfig.h>
 #include <dynamic_reconfigure/server.h>
@@ -83,6 +84,7 @@ public:
 private:
   std::shared_ptr<realtime_tools::RealtimePublisher<visualization_msgs::Marker>> path_desire_pub_;
   std::shared_ptr<realtime_tools::RealtimePublisher<visualization_msgs::Marker>> path_real_pub_;
+  std::shared_ptr<realtime_tools::RealtimePublisher<std_msgs::Float64>> theta_pub_;
   realtime_tools::RealtimeBuffer<Config> config_rt_buffer_;
   dynamic_reconfigure::Server<rm_gimbal_controllers::BulletSolverConfig>* d_srv_{};
   Config config_{};
