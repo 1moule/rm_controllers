@@ -52,7 +52,7 @@ namespace rm_gimbal_controllers
 struct Config
 {
   double resistance_coff_qd_10, resistance_coff_qd_15, resistance_coff_qd_16, resistance_coff_qd_18,
-      resistance_coff_qd_30, g, delay, dt, timeout;
+      resistance_coff_qd_30, g, delay, dt, timeout, k_vel_yaw, min_theta_thred, vel_yaw_dead_zone;
 };
 
 class BulletSolver

@@ -52,7 +52,10 @@ BulletSolver::BulletSolver(ros::NodeHandle& controller_nh)
               .g = getParam(controller_nh, "g", 0.),
               .delay = getParam(controller_nh, "delay", 0.),
               .dt = getParam(controller_nh, "dt", 0.),
-              .timeout = getParam(controller_nh, "timeout", 0.) };
+              .timeout = getParam(controller_nh, "timeout", 0.),
+              .k_vel_yaw = getParam(controller_nh, "k_vel_yaw", 0.),
+              .min_theta_thred = getParam(controller_nh, "min_theta_thred", 0.),
+              .vel_yaw_dead_zone = getParam(controller_nh, "vel_yaw_dead_zone", 0.) };
   max_track_target_vel_ = getParam(controller_nh, "max_track_target_vel", 5.0);
   config_rt_buffer_.initRT(config_);
 
@@ -116,12 +119,13 @@ bool BulletSolver::solve(geometry_msgs::Point pos, geometry_msgs::Vector3 vel, d
   double r = r1;
   double z = pos.z;
   track_target_ = std::abs(v_yaw) < max_track_target_vel_;
-  double switch_armor_angle = track_target_ ?
-                                  acos(r / target_rho) - M_PI / 12 +
-                                      (-acos(r / target_rho) + M_PI / 6) * std::abs(v_yaw) / max_track_target_vel_ :
-                                  M_PI / 12;
-  if ((((yaw + v_yaw * rough_fly_time) > output_yaw_ + switch_armor_angle) && v_yaw > 0.) ||
-      (((yaw + v_yaw * rough_fly_time) < output_yaw_ - switch_armor_angle) && v_yaw < 0.))
+  geometry_msgs::Point current_armor_pos;
+  current_armor_pos.x = pos.x + vel.x * rough_fly_time - r * cos(yaw + v_yaw * rough_fly_time);
+  current_armor_pos.y = pos.y + vel.y * rough_fly_time - r * sin(yaw + v_yaw * rough_fly_time);
+  double theta = M_PI_2 - (yaw + v_yaw * rough_fly_time - std::atan2(current_armor_pos.y, current_armor_pos.x));
+  if (((theta < config_.k_vel_yaw * std::abs(v_yaw) + config_.min_theta_thred) && v_yaw > config_.vel_yaw_dead_zone) ||
+      (((M_PI - theta) < config_.k_vel_yaw * std::abs(v_yaw) + config_.min_theta_thred) &&
+       v_yaw < -config_.vel_yaw_dead_zone))
   {
     selected_armor_ = v_yaw > 0. ? -1 : 1;
     r = armors_num == 4 ? r2 : r1;
@@ -316,6 +320,9 @@ void BulletSolver::reconfigCB(rm_gimbal_controllers::BulletSolverConfig& config,
     config.delay = init_config.delay;
     config.dt = init_config.dt;
     config.timeout = init_config.timeout;
+    config.k_vel_yaw = init_config.k_vel_yaw;
+    config.min_theta_thred = init_config.min_theta_thred;
+    config.vel_yaw_dead_zone = init_config.vel_yaw_dead_zone;
     dynamic_reconfig_initialized_ = true;
   }
   Config config_non_rt{ .resistance_coff_qd_10 = config.resistance_coff_qd_10,
@@ -326,7 +333,10 @@ void BulletSolver::reconfigCB(rm_gimbal_controllers::BulletSolverConfig& config,
                         .g = config.g,
                         .delay = config.delay,
                         .dt = config.dt,
-                        .timeout = config.timeout };
+                        .timeout = config.timeout,
+                        .k_vel_yaw = config.k_vel_yaw,
+                        .min_theta_thred = config.min_theta_thred,
+                        .vel_yaw_dead_zone = config.vel_yaw_dead_zone };
   config_rt_buffer_.writeFromNonRT(config_non_rt);
 }
 }  // namespace rm_gimbal_controllers
