@@ -42,6 +42,7 @@
 #include <rm_common/hardware_interface/robot_state_interface.h>
 #include <realtime_tools/realtime_publisher.h>
 #include <rm_common/filters/filters.h>
+#include <rm_common/filters/lp_filter.h>
 #include <effort_controllers/joint_velocity_controller.h>
 #include <rm_msgs/ChassisCmd.h>
 #include <geometry_msgs/TwistStamped.h>
@@ -62,48 +63,21 @@ struct Command
 class YawVel
 {
 public:
-  YawVel(const ros::NodeHandle& nh)
+  YawVel(ros::NodeHandle& nh)
   {
-    double num_data;
-    nh.param("num_data", num_data, 20.0);
-    nh.param("debug", is_debug_, true);
-    yaw_vel_filter_ = std::make_shared<MovingAverageFilter<double>>(num_data);
-    if (is_debug_)
-    {
-      real_pub_.reset(new realtime_tools::RealtimePublisher<std_msgs::Float64>(nh, "real", 1));
-      filtered_pub_.reset(new realtime_tools::RealtimePublisher<std_msgs::Float64>(nh, "filtered", 1));
-    }
+    lp_filter_ = std::make_shared<LowPassFilter>(nh);
   }
-  std::shared_ptr<MovingAverageFilter<double>> yaw_vel_filter_;
-  void update(double yaw_vel, double period)
+  std::shared_ptr<LowPassFilter> lp_filter_;
+  void update(double yaw_vel, double period, ros::Time time)
   {
     if (period < 0)
       return;
     if (period > 0.1)
     {
-      yaw_vel_filter_->clear();
+      lp_filter_->reset();
     }
-    yaw_vel_filter_->input(yaw_vel);
-    if (is_debug_ && loop_count_ % 10 == 0)
-    {
-      if (real_pub_->trylock())
-      {
-        real_pub_->msg_.data = yaw_vel;
-        real_pub_->unlockAndPublish();
-      }
-      if (filtered_pub_->trylock())
-      {
-        filtered_pub_->msg_.data = yaw_vel_filter_->output();
-        filtered_pub_->unlockAndPublish();
-      }
-    }
-    loop_count_++;
+    lp_filter_->input(yaw_vel, time);
   }
-
-private:
-  bool is_debug_;
-  int loop_count_;
-  std::shared_ptr<realtime_tools::RealtimePublisher<std_msgs::Float64>> real_pub_{}, filtered_pub_{};
 };
 
 template <typename... T>
@@ -188,7 +162,7 @@ protected:
    *
    * @param msg This expresses velocity in free space broken into its linear and angular parts.
    */
-  void updateYawVel();
+  void updateYawVel(ros::Time time);
   void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg);
   void outsideOdomCallback(const nav_msgs::Odometry::ConstPtr& msg);
 
