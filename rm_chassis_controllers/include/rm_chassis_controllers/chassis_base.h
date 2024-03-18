@@ -67,7 +67,7 @@ public:
     double num_data;
     nh.param("num_data", num_data, 20.0);
     nh.param("debug", is_debug_, true);
-    yaw_vel_ = std::make_shared<MovingAverageFilter<double>>(num_data);
+    yaw_vel_filter_ = std::make_shared<MovingAverageFilter<double>>(num_data);
     if (is_debug_)
     {
       real_pub_.reset(new realtime_tools::RealtimePublisher<std_msgs::Float64>(nh, "real", 1));
