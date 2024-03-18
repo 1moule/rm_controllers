@@ -67,33 +67,33 @@ public:
     double num_data;
     nh.param("num_data", num_data, 20.0);
     nh.param("debug", is_debug_, true);
-    angular_ = std::make_shared<MovingAverageFilter<double>>(num_data);
+    yaw_vel_ = std::make_shared<MovingAverageFilter<double>>(num_data);
     if (is_debug_)
     {
       real_pub_.reset(new realtime_tools::RealtimePublisher<std_msgs::Float64>(nh, "real", 1));
       filtered_pub_.reset(new realtime_tools::RealtimePublisher<std_msgs::Float64>(nh, "filtered", 1));
     }
   }
-  std::shared_ptr<MovingAverageFilter<double>> angular_;
-  void update(double angular_vel, double period)
+  std::shared_ptr<MovingAverageFilter<double>> yaw_vel_filter_;
+  void update(double yaw_vel, double period)
   {
     if (period < 0)
       return;
     if (period > 0.1)
     {
-      angular_->clear();
+      yaw_vel_filter_->clear();
     }
-    angular_->input(angular_vel);
+    yaw_vel_filter_->input(yaw_vel);
     if (is_debug_ && loop_count_ % 10 == 0)
     {
       if (real_pub_->trylock())
       {
-        real_pub_->msg_.data = angular_vel;
+        real_pub_->msg_.data = yaw_vel;
         real_pub_->unlockAndPublish();
       }
       if (filtered_pub_->trylock())
       {
-        filtered_pub_->msg_.data = angular_vel;
+        filtered_pub_->msg_.data = yaw_vel_filter_->output();
         filtered_pub_->unlockAndPublish();
       }
     }
