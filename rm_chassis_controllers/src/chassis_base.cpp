@@ -425,7 +425,7 @@ void ChassisBase<T...>::tfVelToBase(const std::string& from)
 }
 
 template <typename... T>
-void ChassisBase<T...>::updateYawVel(ros::Time time)
+void ChassisBase<T...>::updateYawVel(const ros::Time& time)
 {
   double tf_period = odom2yaw_.header.stamp.toSec() - last_odom2yaw_.header.stamp.toSec();
   double last_roll, last_pitch, last_yaw, roll, pitch, yaw;

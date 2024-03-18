@@ -68,7 +68,7 @@ public:
     lp_filter_ = std::make_shared<LowPassFilter>(nh);
   }
   std::shared_ptr<LowPassFilter> lp_filter_;
-  void update(double yaw_vel, double period, ros::Time time)
+  void update(double yaw_vel, double period, const ros::Time& time)
   {
     if (period < 0)
       return;
@@ -162,7 +162,7 @@ protected:
    *
    * @param msg This expresses velocity in free space broken into its linear and angular parts.
    */
-  void updateYawVel(ros::Time time);
+  void updateYawVel(const ros::Time& time);
   void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg);
   void outsideOdomCallback(const nav_msgs::Odometry::ConstPtr& msg);
 
