@@ -65,9 +65,16 @@ class YawVel
 public:
   YawVel(ros::NodeHandle& nh)
   {
+    double num_data;
+    nh.param("num_data", num_data, 20.0);
+    nh.param("debug", is_debug_, true);
     lp_filter_ = std::make_shared<LowPassFilter>(nh);
+    moving_average_filter_ = std::make_shared<MovingAverageFilter<double>>(num_data);
+    if (is_debug_)
+      filtered_pub_.reset(new realtime_tools::RealtimePublisher<std_msgs::Float64>(nh, "filtered", 1));
   }
   std::shared_ptr<LowPassFilter> lp_filter_;
+  std::shared_ptr<MovingAverageFilter<double>> moving_average_filter_;
   void update(double yaw_vel, double period, const ros::Time& time)
   {
     if (period < 0)
@@ -75,9 +82,25 @@ public:
     if (period > 0.1)
     {
       lp_filter_->reset();
+      moving_average_filter_->clear();
     }
     lp_filter_->input(yaw_vel, time);
+    moving_average_filter_->input(lp_filter_->output());
+    if (is_debug_ && loop_count_ % 10 == 0)
+    {
+      if (filtered_pub_->trylock())
+      {
+        filtered_pub_->msg_.data = moving_average_filter_->output();
+        filtered_pub_->unlockAndPublish();
+      }
+    }
+    loop_count_++;
   }
+
+private:
+  bool is_debug_;
+  int loop_count_;
+  std::shared_ptr<realtime_tools::RealtimePublisher<std_msgs::Float64>> filtered_pub_{};
 };
 
 template <typename... T>

@@ -160,7 +160,7 @@ void ChassisBase<T...>::update(const ros::Time& time, const ros::Duration& perio
   }
   try
   {
-    odom2yaw_ = robot_state_handle_.lookupTransform("odom", "yaw", time - ros::Duration(0.001));
+    odom2yaw_ = robot_state_handle_.lookupTransform("odom", "yaw", ros::Time(0));
   }
   catch (tf2::TransformException& ex)
   {
