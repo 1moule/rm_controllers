@@ -42,7 +42,7 @@
 #include <rm_common/hardware_interface/robot_state_interface.h>
 #include <realtime_tools/realtime_publisher.h>
 #include <rm_common/filters/filters.h>
-#include <rm_common/filters/lp_filter.h>
+#include <rm_common/filters/kalman_filter.h>
 #include <effort_controllers/joint_velocity_controller.h>
 #include <rm_msgs/ChassisCmd.h>
 #include <geometry_msgs/TwistStamped.h>
@@ -65,41 +65,56 @@ class YawVel
 public:
   YawVel(ros::NodeHandle& nh)
   {
-    double num_data;
-    nh.param("num_data", num_data, 20.0);
     nh.param("debug", is_debug_, true);
-    lp_filter_ = std::make_shared<LowPassFilter>(nh);
-    moving_average_filter_ = std::make_shared<MovingAverageFilter<double>>(num_data);
+    // Set up filter
+    Mat2<double> A, B, Q;
+    Vec2<double> x;
+    Eigen::Matrix<double, 1, 2> H;
+    Eigen::Matrix<double, 1, 1> R;
+
+    A << 1., 0.001, 0., 1.;
+
+    B << 0., 0., 0., 0.;
+
+    H << 1., 0.;
+
+    Q << 0.01, 0., 0., 0.1;
+
+    R << 0.05;
+
+    x << 0., 0.;
+    u_ << 0., 0.;
+
+    filter = std::make_unique<KalmanFilter<double>>(A, B, H, Q, R);
+    filter->clear(x);
+
     if (is_debug_)
       filtered_pub_.reset(new realtime_tools::RealtimePublisher<std_msgs::Float64>(nh, "filtered", 1));
   }
-  std::shared_ptr<LowPassFilter> lp_filter_;
-  std::shared_ptr<MovingAverageFilter<double>> moving_average_filter_;
-  void update(double yaw_vel, double period, const ros::Time& time)
+  void update(double theta)
   {
-    if (period < 0)
-      return;
-    if (period > 0.1)
-    {
-      lp_filter_->reset();
-      moving_average_filter_->clear();
-    }
-    lp_filter_->input(yaw_vel, time);
-    moving_average_filter_->input(lp_filter_->output());
+    Eigen::Matrix<double, 1, 1> z;
+    z << theta;
+    filter->predict(u_);
+    filter->update(z);
     if (is_debug_ && loop_count_ % 10 == 0)
     {
       if (filtered_pub_->trylock())
       {
-        filtered_pub_->msg_.data = moving_average_filter_->output();
+        Vec2<double> x_hat;
+        x_hat = filter->getState();
+        filtered_pub_->msg_.data = x_hat[1];
         filtered_pub_->unlockAndPublish();
       }
     }
     loop_count_++;
   }
+  std::unique_ptr<KalmanFilter<double>> filter;
 
 private:
   bool is_debug_;
   int loop_count_;
+  Vec2<double> u_;
   std::shared_ptr<realtime_tools::RealtimePublisher<std_msgs::Float64>> filtered_pub_{};
 };
 
