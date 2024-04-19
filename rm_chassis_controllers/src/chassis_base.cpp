@@ -211,7 +211,7 @@ void ChassisBase<T...>::follow(const ros::Time& time, const ros::Duration& perio
               roll, pitch, yaw);
     double follow_error = angles::shortest_angular_distance(yaw, 0);
     pid_follow_.computeCommand(-follow_error, period);
-    vel_cmd_.z = pid_follow_.getCurrentCmd();
+    vel_cmd_.z = pid_follow_.getCurrentCmd() + k_yaw_vel_ * yaw_vel_->filter->getState()[1];
   }
   catch (tf2::TransformException& ex)
   {
@@ -434,6 +434,8 @@ void ChassisBase<T...>::updateYawVel(const ros::Time& time)
 {
   double roll, pitch, yaw;
   quatToRPY(odom2yaw_.transform.rotation, roll, pitch, yaw);
+  yaw = last_yaw_ + angles::shortest_angular_distance(last_yaw_, yaw);
+  last_yaw_ = yaw;
   yaw_vel_->update(yaw);
 }
 

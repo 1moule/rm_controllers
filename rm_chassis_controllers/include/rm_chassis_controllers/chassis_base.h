@@ -67,20 +67,18 @@ public:
   {
     nh.param("debug", is_debug_, true);
     // Set up filter
-    Mat2<double> A, B, Q;
+    Mat2<double> A, B, H, Q, R;
     Vec2<double> x;
-    Eigen::Matrix<double, 1, 2> H;
-    Eigen::Matrix<double, 1, 1> R;
 
     A << 1., 0.001, 0., 1.;
 
     B << 0., 0., 0., 0.;
 
-    H << 1., 0.;
+    H << 1., 0., 0., 0.;
 
-    Q << 0.01, 0., 0., 0.1;
+    Q << 0.5, 0., 0., 80.0;
 
-    R << 0.05;
+    R << 0.05, 0., 0., 0.05;
 
     x << 0., 0.;
     u_ << 0., 0.;
@@ -93,8 +91,8 @@ public:
   }
   void update(double theta)
   {
-    Eigen::Matrix<double, 1, 1> z;
-    z << theta;
+    Eigen::Matrix<double, 2, 1> z;
+    z << theta, 0.;
     filter->predict(u_);
     filter->update(z);
     if (is_debug_ && loop_count_ % 10 == 0)
@@ -211,6 +209,7 @@ protected:
   double wheel_radius_{}, publish_rate_{}, twist_angular_{}, timeout_{}, effort_coeff_{}, velocity_coeff_{},
       power_offset_{};
   double max_odom_vel_;
+  double last_yaw_{};
   bool enable_odom_tf_ = false;
   bool topic_update_ = false;
   bool publish_odom_tf_ = false;
