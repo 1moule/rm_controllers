@@ -64,7 +64,7 @@ namespace rm_gimbal_controllers
 struct GimbalConfig
 {
   double yaw_k_v_, pitch_k_v_, k_chassis_vel_;
-  double delay;
+  double delay, delay2;
 };
 
 class ChassisVel
