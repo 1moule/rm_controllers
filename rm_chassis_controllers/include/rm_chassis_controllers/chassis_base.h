@@ -50,6 +50,7 @@
 #include <nav_msgs/Odometry.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <realtime_tools/realtime_publisher.h>
+#include <rm_chassis_controllers/ChassisBaseConfig.h>
 
 namespace rm_chassis_controllers
 {
@@ -58,6 +59,11 @@ struct Command
   geometry_msgs::Twist cmd_vel_;
   rm_msgs::ChassisCmd cmd_chassis_;
   ros::Time stamp_;
+};
+
+struct Config
+{
+  double k_yaw_vel_;
 };
 
 class YawVel
@@ -201,6 +207,7 @@ protected:
   void updateYawVel(const ros::Time& time);
   void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg);
   void outsideOdomCallback(const nav_msgs::Odometry::ConstPtr& msg);
+  void reconfigCB(rm_chassis_controllers::ChassisBaseConfig& config, uint32_t);
 
   rm_control::RobotStateHandle robot_state_handle_{};
   hardware_interface::EffortJointInterface* effort_joint_interface_{};
@@ -214,6 +221,7 @@ protected:
   bool topic_update_ = false;
   bool publish_odom_tf_ = false;
   bool state_changed_ = true;
+  bool dynamic_reconfig_initialized_{};
   enum
   {
     RAW,
@@ -236,11 +244,13 @@ protected:
   ros::Subscriber cmd_chassis_sub_;
   ros::Subscriber cmd_vel_sub_;
   Command cmd_struct_;
+  Config config_{};
+  dynamic_reconfigure::Server<rm_chassis_controllers::ChassisBaseConfig>* d_srv_{};
+  realtime_tools::RealtimeBuffer<Config> config_rt_buffer_;
   realtime_tools::RealtimeBuffer<Command> cmd_rt_buffer_;
   realtime_tools::RealtimeBuffer<nav_msgs::Odometry> odom_buffer_;
 
   // Yaw
-  double k_yaw_vel_;
   std::shared_ptr<YawVel> yaw_vel_;
 };
 

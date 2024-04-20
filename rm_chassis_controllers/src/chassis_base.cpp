@@ -67,8 +67,14 @@ bool ChassisBase<T...>::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
   publish_odom_tf_ = getParam(controller_nh, "publish_odom_tf", false);
 
   ros::NodeHandle yaw_vel_nh(controller_nh, "yaw_vel");
-  k_yaw_vel_ = getParam(yaw_vel_nh, "k_yaw_vel", 0.);
   yaw_vel_ = std::make_shared<YawVel>(yaw_vel_nh);
+
+  config_ = { .k_yaw_vel_ = getParam(yaw_vel_nh, "k_yaw_vel", 0.) };
+  config_rt_buffer_.initRT(config_);
+  d_srv_ = new dynamic_reconfigure::Server<rm_chassis_controllers::ChassisBaseConfig>(controller_nh);
+  dynamic_reconfigure::Server<rm_chassis_controllers::ChassisBaseConfig>::CallbackType cb =
+      [this](auto&& PH1, auto&& PH2) { reconfigCB(PH1, PH2); };
+  d_srv_->setCallback(cb);
 
   // Get and check params for covariances
   XmlRpc::XmlRpcValue twist_cov_list;
@@ -126,6 +132,7 @@ void ChassisBase<T...>::update(const ros::Time& time, const ros::Duration& perio
 {
   rm_msgs::ChassisCmd cmd_chassis = cmd_rt_buffer_.readFromRT()->cmd_chassis_;
   geometry_msgs::Twist cmd_vel = cmd_rt_buffer_.readFromRT()->cmd_vel_;
+  config_ = *config_rt_buffer_.readFromRT();
 
   if ((time - cmd_rt_buffer_.readFromRT()->stamp_).toSec() > timeout_)
   {
@@ -211,7 +218,7 @@ void ChassisBase<T...>::follow(const ros::Time& time, const ros::Duration& perio
               roll, pitch, yaw);
     double follow_error = angles::shortest_angular_distance(yaw, 0);
     pid_follow_.computeCommand(-follow_error, period);
-    vel_cmd_.z = pid_follow_.getCurrentCmd() + k_yaw_vel_ * yaw_vel_->filter->getState()[1];
+    vel_cmd_.z = pid_follow_.getCurrentCmd() + config_.k_yaw_vel_ * yaw_vel_->filter->getState()[1];
   }
   catch (tf2::TransformException& ex)
   {
@@ -461,4 +468,17 @@ void ChassisBase<T...>::outsideOdomCallback(const nav_msgs::Odometry::ConstPtr& 
   topic_update_ = true;
 }
 
+template <typename... T>
+void ChassisBase<T...>::reconfigCB(rm_chassis_controllers::ChassisBaseConfig& config, uint32_t /*unused*/)
+{
+  ROS_INFO("[Bullet Solver] Dynamic params change");
+  if (!dynamic_reconfig_initialized_)
+  {
+    Config init_config = *config_rt_buffer_.readFromNonRT();  // config init use yaml
+    config.k_yaw_vel_ = init_config.k_yaw_vel_;
+    dynamic_reconfig_initialized_ = true;
+  }
+  Config config_non_rt{ .k_yaw_vel_ = config.k_yaw_vel_ };
+  config_rt_buffer_.writeFromNonRT(config_non_rt);
+}
 }  // namespace rm_chassis_controllers
