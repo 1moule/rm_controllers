@@ -474,10 +474,10 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
     {
       pid_yaw_pos_state_pub_->msg_.header.stamp = time;
       pid_yaw_pos_state_pub_->msg_.set_point = yaw_des;
+      pid_yaw_pos_state_pub_->msg_.set_point_dot = yaw_vel_des;
       pid_yaw_pos_state_pub_->msg_.td_set_point = yaw_ntd_->getX1();
       pid_yaw_pos_state_pub_->msg_.td_set_point_dot = yaw_ntd_->getX2();
       pid_yaw_pos_state_pub_->msg_.process_value = yaw_real;
-      pid_yaw_pos_state_pub_->msg_.vel_des = yaw_vel_des;
       pid_yaw_pos_state_pub_->msg_.error = angles::shortest_angular_distance(yaw_real, yaw_des);
       pid_yaw_pos_state_pub_->msg_.command = pid_yaw_pos_.getCurrentCmd();
       pid_yaw_pos_state_pub_->unlockAndPublish();
@@ -486,10 +486,10 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
     {
       pid_pitch_pos_state_pub_->msg_.header.stamp = time;
       pid_pitch_pos_state_pub_->msg_.set_point = pitch_des;
+      pid_pitch_pos_state_pub_->msg_.set_point_dot = pitch_vel_des;
       pid_pitch_pos_state_pub_->msg_.td_set_point = pitch_ntd_->getX1();
       pid_pitch_pos_state_pub_->msg_.td_set_point_dot = pitch_ntd_->getX2();
       pid_pitch_pos_state_pub_->msg_.process_value = pitch_real;
-      pid_pitch_pos_state_pub_->msg_.vel_des = pitch_vel_des;
       pid_pitch_pos_state_pub_->msg_.error = angles::shortest_angular_distance(pitch_real, pitch_des);
       pid_pitch_pos_state_pub_->msg_.command = pid_pitch_pos_.getCurrentCmd();
       pid_pitch_pos_state_pub_->unlockAndPublish();
