@@ -82,6 +82,8 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
   config_ = { .yaw_k_v_ = getParam(nh_yaw, "k_v", 0.),
               .pitch_k_v_ = getParam(nh_pitch, "k_v", 0.),
               .k_chassis_vel_ = getParam(controller_nh, "yaw/k_chassis_vel", 0.),
+              .accel_pitch_ = getParam(controller_nh, "pitch/accel", 99.),
+              .accel_yaw_ = getParam(controller_nh, "yaw/accel", 99.),
               .delay = getParam(controller_nh, "delay", 0.) };
   config_rt_buffer_.initRT(config_);
   d_srv_ = new dynamic_reconfigure::Server<rm_gimbal_controllers::GimbalBaseConfig>(controller_nh);
@@ -149,6 +151,10 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
   pid_yaw_pos_state_pub_.reset(new realtime_tools::RealtimePublisher<rm_msgs::GimbalPosState>(nh_yaw, "pos_state", 1));
   pid_pitch_pos_state_pub_.reset(
       new realtime_tools::RealtimePublisher<rm_msgs::GimbalPosState>(nh_pitch, "pos_state", 1));
+
+  ramp_rate_pitch_ = new RampFilter<double>(0, 0.001);
+  ramp_rate_yaw_ = new RampFilter<double>(0, 0.001);
+
   return true;
 }
 
@@ -163,6 +169,12 @@ void Controller::update(const ros::Time& time, const ros::Duration& period)
   cmd_gimbal_ = *cmd_rt_buffer_.readFromRT();
   data_track_ = *track_rt_buffer_.readFromNonRT();
   config_ = *config_rt_buffer_.readFromRT();
+  ramp_rate_pitch_->setAcc(config_.accel_pitch_);
+  ramp_rate_yaw_->setAcc(config_.accel_yaw_);
+  ramp_rate_pitch_->input(cmd_gimbal_.rate_pitch);
+  ramp_rate_yaw_->input(cmd_gimbal_.rate_yaw);
+  cmd_gimbal_.rate_pitch = ramp_rate_pitch_->output();
+  cmd_gimbal_.rate_yaw = ramp_rate_yaw_->output();
   try
   {
     odom2pitch_ = robot_state_handle_.lookupTransform("odom", pitch_joint_urdf_->child_link_name, time);
@@ -511,13 +523,9 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
   }
   loop_count_++;
 
-  if (state_ == RATE)
-    ctrl_yaw_.setCommand(-config_.k_chassis_vel_ * chassis_vel_->angular_lp_filter_->output() +
-                         config_.yaw_k_v_ * yaw_vel_des + ctrl_yaw_.joint_.getVelocity() - angular_vel_yaw.z);
-  else
-    ctrl_yaw_.setCommand(pid_yaw_pos_.getCurrentCmd() -
-                         config_.k_chassis_vel_ * chassis_vel_->angular_lp_filter_->output() +
-                         config_.yaw_k_v_ * yaw_vel_des + ctrl_yaw_.joint_.getVelocity() - angular_vel_yaw.z);
+  ctrl_yaw_.setCommand(pid_yaw_pos_.getCurrentCmd() -
+                       config_.k_chassis_vel_ * chassis_vel_->angular_lp_filter_->output() +
+                       config_.yaw_k_v_ * yaw_vel_des + ctrl_yaw_.joint_.getVelocity() - angular_vel_yaw.z);
   ctrl_pitch_.setCommand(pid_pitch_pos_.getCurrentCmd() + config_.pitch_k_v_ * pitch_vel_des +
                          ctrl_pitch_.joint_.getVelocity() - angular_vel_pitch.y);
 
@@ -586,12 +594,16 @@ void Controller::reconfigCB(rm_gimbal_controllers::GimbalBaseConfig& config, uin
     config.yaw_k_v_ = init_config.yaw_k_v_;
     config.pitch_k_v_ = init_config.pitch_k_v_;
     config.k_chassis_vel_ = init_config.k_chassis_vel_;
+    config.accel_pitch_ = init_config.accel_pitch_;
+    config.accel_yaw_ = init_config.accel_yaw_;
     config.delay = init_config.delay;
     dynamic_reconfig_initialized_ = true;
   }
   GimbalConfig config_non_rt{ .yaw_k_v_ = config.yaw_k_v_,
                               .pitch_k_v_ = config.pitch_k_v_,
                               .k_chassis_vel_ = config.k_chassis_vel_,
+                              .accel_pitch_ = config.accel_pitch_,
+                              .accel_yaw_ = config.accel_yaw_,
                               .delay = config.delay };
   config_rt_buffer_.writeFromNonRT(config_non_rt);
 }
