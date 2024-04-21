@@ -456,12 +456,19 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
   if (std::abs(angles::shortest_angular_distance(last_yaw_des, yaw_des)) > 0.05)
   {
     yaw_des_jump_ = true;
+    if (yaw_des - yaw_real > M_PI)
+      yaw_des_cross_border = -1;
+    else if (yaw_des - yaw_real < -M_PI)
+      yaw_des_cross_border = 1;
+    else
+      yaw_des_cross_border = 0;
     yaw_ntd_->clear(last_yaw_des, last_yaw_vel_des_);
   }
   if (std::abs(angles::shortest_angular_distance(yaw_real, yaw_des)) < 0.01 && yaw_des_jump_)
     yaw_des_jump_ = false;
   if (yaw_des_jump_)
   {
+    yaw_des = yaw_des_cross_border != 0 ? yaw_des + (2 * M_PI * yaw_des_cross_border) : yaw_des;
     yaw_ntd_->update(yaw_des);
     yaw_angle_error = angles::shortest_angular_distance(yaw_real, yaw_ntd_->getX1());
     yaw_vel_des = yaw_ntd_->getX2();
@@ -471,12 +478,19 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
   if (std::abs(angles::shortest_angular_distance(last_pitch_des, pitch_des)) > 0.05)
   {
     pitch_des_jump_ = true;
+    if (pitch_des - pitch_real > M_PI)
+      pitch_des_cross_border = -1;
+    else if (pitch_des - pitch_real < -M_PI)
+      pitch_des_cross_border = 1;
+    else
+      pitch_des_cross_border = 0;
     pitch_ntd_->clear(last_pitch_des, last_pitch_vel_des_);
   }
   if (std::abs(angles::shortest_angular_distance(pitch_real, pitch_des)) < 0.01 && pitch_des_jump_)
     pitch_des_jump_ = false;
   if (pitch_des_jump_)
   {
+    pitch_des = pitch_des_cross_border != 0 ? pitch_des + (2 * M_PI * pitch_des_cross_border) : pitch_des;
     pitch_ntd_->update(pitch_des);
     pitch_angle_error = angles::shortest_angular_distance(pitch_real, pitch_ntd_->getX1());
     pitch_vel_des = pitch_ntd_->getX2();

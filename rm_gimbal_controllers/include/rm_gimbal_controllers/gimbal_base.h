@@ -206,6 +206,7 @@ private:
   std::unique_ptr<NonlinearTrackingDifferentiator<double>> yaw_ntd_, pitch_ntd_;
   bool yaw_des_jump_{}, pitch_des_jump_{};
   double last_yaw_vel_des_{}, last_pitch_vel_des_{};
+  int yaw_des_cross_border{}, pitch_des_cross_border{};
 
   RampFilter<double>*ramp_rate_pitch_{}, *ramp_rate_yaw_{};
 
