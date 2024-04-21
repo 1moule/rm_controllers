@@ -156,6 +156,9 @@ private:
   void moveJoint(const ros::Time& time, const ros::Duration& period);
   double feedForward(const ros::Time& time);
   void updateChassisVel();
+  void updateGimbalVelDesAndError(double pos_des, bool& pos_des_jump, int& pos_des_cross_border, double last_pos_des,
+                                  double last_vel_des, double pos_real, double& angle_error, double& vel_des,
+                                  std::unique_ptr<NonlinearTrackingDifferentiator<double>>& ntd);
   void commandCB(const rm_msgs::GimbalCmdConstPtr& msg);
   void trackCB(const rm_msgs::TrackDataConstPtr& msg);
   void reconfigCB(rm_gimbal_controllers::GimbalBaseConfig& config, uint32_t);

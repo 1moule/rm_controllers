@@ -415,7 +415,7 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
   quatToRPY(last_odom2gimbal_des_.transform.rotation, last_roll_des, last_pitch_des, last_yaw_des);
   last_odom2gimbal_des_ = odom2gimbal_des_;
 
-  double yaw_angle_error, pitch_angle_error;
+  double yaw_angle_error{}, pitch_angle_error{};
   double yaw_vel_des = 0., pitch_vel_des = 0.;
   if (state_ == RATE)
   {
@@ -453,50 +453,10 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
       ROS_WARN("%s", ex.what());
     }
   }
-  if (std::abs(angles::shortest_angular_distance(last_yaw_des, yaw_des)) > 0.05)
-  {
-    yaw_des_jump_ = true;
-    if (yaw_des - yaw_real > M_PI)
-      yaw_des_cross_border = -1;
-    else if (yaw_des - yaw_real < -M_PI)
-      yaw_des_cross_border = 1;
-    else
-      yaw_des_cross_border = 0;
-    yaw_ntd_->clear(last_yaw_des, last_yaw_vel_des_);
-  }
-  if (std::abs(angles::shortest_angular_distance(yaw_real, yaw_des)) < 0.01 && yaw_des_jump_)
-    yaw_des_jump_ = false;
-  if (yaw_des_jump_)
-  {
-    yaw_des = yaw_des_cross_border != 0 ? yaw_des + (2 * M_PI * yaw_des_cross_border) : yaw_des;
-    yaw_ntd_->update(yaw_des);
-    yaw_angle_error = angles::shortest_angular_distance(yaw_real, yaw_ntd_->getX1());
-    yaw_vel_des = yaw_ntd_->getX2();
-  }
-  else
-    yaw_angle_error = angles::shortest_angular_distance(yaw_real, yaw_des);
-  if (std::abs(angles::shortest_angular_distance(last_pitch_des, pitch_des)) > 0.05)
-  {
-    pitch_des_jump_ = true;
-    if (pitch_des - pitch_real > M_PI)
-      pitch_des_cross_border = -1;
-    else if (pitch_des - pitch_real < -M_PI)
-      pitch_des_cross_border = 1;
-    else
-      pitch_des_cross_border = 0;
-    pitch_ntd_->clear(last_pitch_des, last_pitch_vel_des_);
-  }
-  if (std::abs(angles::shortest_angular_distance(pitch_real, pitch_des)) < 0.01 && pitch_des_jump_)
-    pitch_des_jump_ = false;
-  if (pitch_des_jump_)
-  {
-    pitch_des = pitch_des_cross_border != 0 ? pitch_des + (2 * M_PI * pitch_des_cross_border) : pitch_des;
-    pitch_ntd_->update(pitch_des);
-    pitch_angle_error = angles::shortest_angular_distance(pitch_real, pitch_ntd_->getX1());
-    pitch_vel_des = pitch_ntd_->getX2();
-  }
-  else
-    pitch_angle_error = angles::shortest_angular_distance(pitch_real, pitch_des);
+  updateGimbalVelDesAndError(yaw_des, yaw_des_jump_, yaw_des_cross_border, last_yaw_des, last_yaw_vel_des_, yaw_real,
+                             yaw_angle_error, yaw_vel_des, yaw_ntd_);
+  updateGimbalVelDesAndError(pitch_des, pitch_des_jump_, pitch_des_cross_border, last_pitch_des, last_pitch_vel_des_,
+                             pitch_real, pitch_angle_error, pitch_vel_des, pitch_ntd_);
   if (!pitch_des_in_limit)
     pitch_vel_des = 0.;
   if (!yaw_des_in_limit_)
@@ -585,6 +545,35 @@ void Controller::updateChassisVel()
   double angular_vel[3]{ angular_x, angular_y, angular_z };
   chassis_vel_->update(linear_vel, angular_vel, tf_period);
   last_odom2base_ = odom2base_;
+}
+
+void Controller::updateGimbalVelDesAndError(double pos_des, bool& pos_des_jump, int& pos_des_cross_border,
+                                            double last_pos_des, double last_vel_des, double pos_real,
+                                            double& angle_error, double& vel_des,
+                                            std::unique_ptr<NonlinearTrackingDifferentiator<double>>& ntd)
+{
+  if (std::abs(angles::shortest_angular_distance(last_pos_des, pos_des)) > 0.05)
+  {
+    pos_des_jump = true;
+    if (pos_des - pos_real > M_PI)
+      pos_des_cross_border = -1;
+    else if (pos_des - pos_real < -M_PI)
+      pos_des_cross_border = 1;
+    else
+      pos_des_cross_border = 0;
+    ntd->clear(last_pos_des, last_vel_des);
+  }
+  if (std::abs(angles::shortest_angular_distance(pos_real, pos_des)) < 0.01 && pos_des_jump)
+    pos_des_jump = false;
+  if (pos_des_jump)
+  {
+    pos_des = pos_des_cross_border != 0 ? pos_des + (2 * M_PI * pos_des_cross_border) : pos_des;
+    ntd->update(pos_des);
+    angle_error = angles::shortest_angular_distance(pos_real, ntd->getX1());
+    vel_des = ntd->getX2();
+  }
+  else
+    angle_error = angles::shortest_angular_distance(pos_real, pos_des);
 }
 
 void Controller::commandCB(const rm_msgs::GimbalCmdConstPtr& msg)
