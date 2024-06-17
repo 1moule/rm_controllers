@@ -55,6 +55,7 @@
 #include <urdf/model.h>
 #include <dynamic_reconfigure/server.h>
 #include <realtime_tools/realtime_publisher.h>
+#include <nav_msgs/Odometry.h>
 
 namespace rm_gimbal_controllers
 {
@@ -146,9 +147,10 @@ private:
                        const urdf::JointConstSharedPtr& joint_urdf);
   void moveJoint(const ros::Time& time, const ros::Duration& period);
   double feedForward(const ros::Time& time);
-  void updateChassisVel();
+  void updateChassisVel(const ros::Time& time);
   void commandCB(const rm_msgs::GimbalCmdConstPtr& msg);
   void trackCB(const rm_msgs::TrackDataConstPtr& msg);
+  void odomCB(const nav_msgs::OdometryConstPtr& msg);
   void reconfigCB(rm_gimbal_controllers::GimbalBaseConfig& config, uint32_t);
 
   rm_control::RobotStateHandle robot_state_handle_;
@@ -165,12 +167,16 @@ private:
   std::shared_ptr<realtime_tools::RealtimePublisher<rm_msgs::GimbalDesError>> error_pub_;
   ros::Subscriber cmd_gimbal_sub_;
   ros::Subscriber data_track_sub_;
+  ros::Subscriber odom_sub_;
+  ros::Publisher test;
   realtime_tools::RealtimeBuffer<rm_msgs::GimbalCmd> cmd_rt_buffer_;
   realtime_tools::RealtimeBuffer<rm_msgs::TrackData> track_rt_buffer_;
+  realtime_tools::RealtimeBuffer<nav_msgs::Odometry> odom_rt_buffer_;
   urdf::JointConstSharedPtr pitch_joint_urdf_, yaw_joint_urdf_;
 
   rm_msgs::GimbalCmd cmd_gimbal_;
   rm_msgs::TrackData data_track_;
+  nav_msgs::Odometry data_odom_;
   std::string gimbal_des_frame_id_{}, imu_name_{};
   double publish_rate_{};
   bool state_changed_{};
@@ -186,7 +192,7 @@ private:
   bool enable_gravity_compensation_;
 
   // Chassis
-  std::shared_ptr<ChassisVel> chassis_vel_;
+  geometry_msgs::Twist chassis_vel_;
 
   bool dynamic_reconfig_initialized_{};
   GimbalConfig config_{};

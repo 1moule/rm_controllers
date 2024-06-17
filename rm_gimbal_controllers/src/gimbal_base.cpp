@@ -63,7 +63,6 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
   enable_gravity_compensation_ = enable_feedforward && (bool)xml_rpc_value["enable_gravity_compensation"];
 
   ros::NodeHandle chassis_vel_nh(controller_nh, "chassis_vel");
-  chassis_vel_ = std::make_shared<ChassisVel>(chassis_vel_nh);
   ros::NodeHandle nh_bullet_solver = ros::NodeHandle(controller_nh, "bullet_solver");
   bullet_solver_ = std::make_shared<BulletSolver>(nh_bullet_solver);
 
@@ -137,10 +136,12 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
 
   cmd_gimbal_sub_ = controller_nh.subscribe<rm_msgs::GimbalCmd>("command", 1, &Controller::commandCB, this);
   data_track_sub_ = controller_nh.subscribe<rm_msgs::TrackData>("/track", 1, &Controller::trackCB, this);
+  odom_sub_ = controller_nh.subscribe<nav_msgs::Odometry>("/odom", 1, &Controller::odomCB, this);
   publish_rate_ = getParam(controller_nh, "publish_rate", 100.);
   error_pub_.reset(new realtime_tools::RealtimePublisher<rm_msgs::GimbalDesError>(controller_nh, "error", 100));
   yaw_pos_state_pub_.reset(new realtime_tools::RealtimePublisher<rm_msgs::GimbalPosState>(nh_yaw, "pos_state", 1));
   pitch_pos_state_pub_.reset(new realtime_tools::RealtimePublisher<rm_msgs::GimbalPosState>(nh_pitch, "pos_state", 1));
+  test = controller_nh.advertise<nav_msgs::Odometry>("test", 1);
 
   ramp_rate_pitch_ = new RampFilter<double>(0, 0.001);
   ramp_rate_yaw_ = new RampFilter<double>(0, 0.001);
@@ -158,6 +159,7 @@ void Controller::update(const ros::Time& time, const ros::Duration& period)
 {
   cmd_gimbal_ = *cmd_rt_buffer_.readFromRT();
   data_track_ = *track_rt_buffer_.readFromNonRT();
+  data_odom_ = *odom_rt_buffer_.readFromNonRT();
   config_ = *config_rt_buffer_.readFromRT();
   ramp_rate_pitch_->setAcc(config_.accel_pitch_);
   ramp_rate_yaw_->setAcc(config_.accel_yaw_);
@@ -175,7 +177,7 @@ void Controller::update(const ros::Time& time, const ros::Duration& period)
     ROS_WARN("%s", ex.what());
     return;
   }
-  updateChassisVel();
+  updateChassisVel(time);
   if (state_ != cmd_gimbal_.mode)
   {
     state_ = cmd_gimbal_.mode;
@@ -296,12 +298,12 @@ void Controller::track(const ros::Time& time)
   target_pos.x += target_vel.x * (time - data_track_.header.stamp).toSec() - odom2pitch_.transform.translation.x;
   target_pos.y += target_vel.y * (time - data_track_.header.stamp).toSec() - odom2pitch_.transform.translation.y;
   target_pos.z += target_vel.z * (time - data_track_.header.stamp).toSec() - odom2pitch_.transform.translation.z;
-  target_vel.x -= chassis_vel_->linear_->x();
-  target_vel.y -= chassis_vel_->linear_->y();
-  target_vel.z -= chassis_vel_->linear_->z();
+  target_vel.x -= data_odom_.twist.twist.linear.x;
+  target_vel.y -= data_odom_.twist.twist.linear.y;
+  target_vel.z -= data_odom_.twist.twist.linear.z;
   bool solve_success = bullet_solver_->solve(target_pos, target_vel, cmd_gimbal_.bullet_speed, yaw, data_track_.v_yaw,
                                              data_track_.radius_1, data_track_.radius_2, data_track_.dz,
-                                             data_track_.armors_num, chassis_vel_->angular_->z());
+                                             data_track_.armors_num, chassis_vel_.angular.z);
   bullet_solver_->judgeShootBeforehand(time);
 
   if (publish_rate_ > 0.0 && last_publish_time_ + ros::Duration(1.0 / publish_rate_) < time)
@@ -478,7 +480,7 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
   }
   loop_count_++;
 
-  ctrl_yaw_.setCommand(pid_yaw_pos_.getCurrentCmd() - config_.k_chassis_vel_ * chassis_vel_->angular_->z() +
+  ctrl_yaw_.setCommand(pid_yaw_pos_.getCurrentCmd() - config_.k_chassis_vel_ * chassis_vel_.angular.z +
                        config_.yaw_k_v_ * yaw_vel_des + ctrl_yaw_.joint_.getVelocity() - angular_vel_yaw.z);
   ctrl_pitch_.setCommand(pid_pitch_pos_.getCurrentCmd() + config_.pitch_k_v_ * pitch_vel_des +
                          ctrl_pitch_.joint_.getVelocity() - angular_vel_pitch.y);
@@ -506,24 +508,20 @@ double Controller::feedForward(const ros::Time& time)
   return feedforward;
 }
 
-void Controller::updateChassisVel()
+void Controller::updateChassisVel(const ros::Time& time)
 {
-  double tf_period = odom2base_.header.stamp.toSec() - last_odom2base_.header.stamp.toSec();
-  double linear_x = (odom2base_.transform.translation.x - last_odom2base_.transform.translation.x) / tf_period;
-  double linear_y = (odom2base_.transform.translation.y - last_odom2base_.transform.translation.y) / tf_period;
-  double linear_z = (odom2base_.transform.translation.z - last_odom2base_.transform.translation.z) / tf_period;
-  double last_angular_position_x, last_angular_position_y, last_angular_position_z, angular_position_x,
-      angular_position_y, angular_position_z;
-  quatToRPY(odom2base_.transform.rotation, angular_position_x, angular_position_y, angular_position_z);
-  quatToRPY(last_odom2base_.transform.rotation, last_angular_position_x, last_angular_position_y,
-            last_angular_position_z);
-  double angular_x = angles::shortest_angular_distance(last_angular_position_x, angular_position_x) / tf_period;
-  double angular_y = angles::shortest_angular_distance(last_angular_position_y, angular_position_y) / tf_period;
-  double angular_z = angles::shortest_angular_distance(last_angular_position_z, angular_position_z) / tf_period;
-  double linear_vel[3]{ linear_x, linear_y, linear_z };
-  double angular_vel[3]{ angular_x, angular_y, angular_z };
-  chassis_vel_->update(linear_vel, angular_vel, tf_period);
-  last_odom2base_ = odom2base_;
+  try
+  {
+    tf2::doTransform(data_odom_.twist.twist.linear, data_odom_.twist.twist.linear, odom2base_);
+    tf2::doTransform(data_odom_.twist.twist.angular, data_odom_.twist.twist.angular, odom2base_);
+  }
+  catch (tf2::TransformException& ex)
+  {
+    ROS_WARN("%s", ex.what());
+    return;
+  }
+  chassis_vel_ = data_odom_.twist.twist;
+  test.publish(data_odom_);
 }
 
 void Controller::commandCB(const rm_msgs::GimbalCmdConstPtr& msg)
@@ -536,6 +534,11 @@ void Controller::trackCB(const rm_msgs::TrackDataConstPtr& msg)
   if (msg->id == 0)
     return;
   track_rt_buffer_.writeFromNonRT(*msg);
+}
+
+void Controller::odomCB(const nav_msgs::OdometryConstPtr& msg)
+{
+  odom_rt_buffer_.writeFromNonRT(*msg);
 }
 
 void Controller::reconfigCB(rm_gimbal_controllers::GimbalBaseConfig& config, uint32_t /*unused*/)
