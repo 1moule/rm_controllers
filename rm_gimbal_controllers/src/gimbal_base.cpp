@@ -139,9 +139,9 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
   odom_sub_ = controller_nh.subscribe<nav_msgs::Odometry>("/odom", 1, &Controller::odomCB, this);
   publish_rate_ = getParam(controller_nh, "publish_rate", 100.);
   error_pub_.reset(new realtime_tools::RealtimePublisher<rm_msgs::GimbalDesError>(controller_nh, "error", 100));
+  chassis_vel_pub_.reset(new realtime_tools::RealtimePublisher<geometry_msgs::Twist>(controller_nh, "chassis_vel", 100));
   yaw_pos_state_pub_.reset(new realtime_tools::RealtimePublisher<rm_msgs::GimbalPosState>(nh_yaw, "pos_state", 1));
   pitch_pos_state_pub_.reset(new realtime_tools::RealtimePublisher<rm_msgs::GimbalPosState>(nh_pitch, "pos_state", 1));
-  test = controller_nh.advertise<nav_msgs::Odometry>("test", 1);
 
   ramp_rate_pitch_ = new RampFilter<double>(0, 0.001);
   ramp_rate_yaw_ = new RampFilter<double>(0, 0.001);
@@ -196,6 +196,7 @@ void Controller::update(const ros::Time& time, const ros::Duration& period)
       break;
   }
   moveJoint(time, period);
+  loop_count_++;
 }
 
 void Controller::setDes(const ros::Time& time, double yaw_des, double pitch_des)
@@ -478,7 +479,6 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
       pitch_pos_state_pub_->unlockAndPublish();
     }
   }
-  loop_count_++;
 
   ctrl_yaw_.setCommand(pid_yaw_pos_.getCurrentCmd() - config_.k_chassis_vel_ * chassis_vel_.angular.z +
                        config_.yaw_k_v_ * yaw_vel_des + ctrl_yaw_.joint_.getVelocity() - angular_vel_yaw.z);
@@ -521,7 +521,14 @@ void Controller::updateChassisVel(const ros::Time& time)
     return;
   }
   chassis_vel_ = data_odom_.twist.twist;
-  test.publish(data_odom_);
+  if (loop_count_ % 10 == 0)
+  {
+    if (chassis_vel_pub_->trylock())
+    {
+      chassis_vel_pub_->msg_ = chassis_vel_;
+      chassis_vel_pub_->unlockAndPublish();
+    }
+  }
 }
 
 void Controller::commandCB(const rm_msgs::GimbalCmdConstPtr& msg)
