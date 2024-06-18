@@ -43,6 +43,7 @@
 #include <hardware_interface/imu_sensor_interface.h>
 #include <rm_common/hardware_interface/robot_state_interface.h>
 #include <rm_common/filters/filters.h>
+#include <rm_common/filters/kalman_filter.h>
 #include <rm_msgs/GimbalCmd.h>
 #include <rm_msgs/TrackData.h>
 #include <rm_msgs/GimbalDesError.h>
@@ -70,62 +71,55 @@ class ChassisVel
 public:
   ChassisVel(const ros::NodeHandle& nh)
   {
-    double num_data;
-    nh.param("num_data", num_data, 20.0);
     nh.param("debug", is_debug_, true);
-    linear_ = std::make_shared<Vector3WithFilter<double>>(num_data);
-    angular_ = std::make_shared<Vector3WithFilter<double>>(num_data);
+    // Set up filter
+    Mat2<double> A, B, H, Q, R;
+    Vec2<double> x;
+
+    A << 1., 0.001, 0., 1.;
+
+    B << 0., 0., 0., 0.;
+
+    H << 1., 0., 0., 0.;
+
+    Q << 0.5, 0., 0., 80.0;
+
+    R << 0.05, 0., 0., 0.05;
+
+    x << 0., 0.;
+    u_ << 0., 0.;
+
+    filter = std::make_unique<KalmanFilter<double>>(A, B, H, Q, R);
+    filter->clear(x);
+
     if (is_debug_)
-    {
-      real_pub_.reset(new realtime_tools::RealtimePublisher<geometry_msgs::Twist>(nh, "real", 1));
-      filtered_pub_.reset(new realtime_tools::RealtimePublisher<geometry_msgs::Twist>(nh, "filtered", 1));
-    }
+      filtered_pub_.reset(new realtime_tools::RealtimePublisher<std_msgs::Float64>(nh, "filtered", 1));
   }
-  std::shared_ptr<Vector3WithFilter<double>> linear_;
-  std::shared_ptr<Vector3WithFilter<double>> angular_;
-  void update(double linear_vel[3], double angular_vel[3], double period)
+  void update(double vel, double acc)
   {
-    if (period < 0)
-      return;
-    if (period > 0.1)
-    {
-      linear_->clear();
-      angular_->clear();
-    }
-    linear_->input(linear_vel);
-    angular_->input(angular_vel);
+    Eigen::Matrix<double, 2, 1> z;
+    z << vel, acc;
+    filter->predict(u_);
+    filter->update(z);
     if (is_debug_ && loop_count_ % 10 == 0)
     {
-      if (real_pub_->trylock())
-      {
-        real_pub_->msg_.linear.x = linear_vel[0];
-        real_pub_->msg_.linear.y = linear_vel[1];
-        real_pub_->msg_.linear.z = linear_vel[2];
-        real_pub_->msg_.angular.x = angular_vel[0];
-        real_pub_->msg_.angular.y = angular_vel[1];
-        real_pub_->msg_.angular.z = angular_vel[2];
-
-        real_pub_->unlockAndPublish();
-      }
       if (filtered_pub_->trylock())
       {
-        filtered_pub_->msg_.linear.x = linear_->x();
-        filtered_pub_->msg_.linear.y = linear_->y();
-        filtered_pub_->msg_.linear.z = linear_->z();
-        filtered_pub_->msg_.angular.x = angular_->x();
-        filtered_pub_->msg_.angular.y = angular_->y();
-        filtered_pub_->msg_.angular.z = angular_->z();
-
+        Vec2<double> x_hat;
+        x_hat = filter->getState();
+        filtered_pub_->msg_.data = x_hat[0];
         filtered_pub_->unlockAndPublish();
       }
     }
     loop_count_++;
   }
+  std::unique_ptr<KalmanFilter<double>> filter;
 
 private:
   bool is_debug_;
   int loop_count_;
-  std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::Twist>> real_pub_{}, filtered_pub_{};
+  Vec2<double> u_;
+  std::shared_ptr<realtime_tools::RealtimePublisher<std_msgs::Float64>> filtered_pub_{};
 };
 
 class Controller : public controller_interface::MultiInterfaceController<rm_control::RobotStateInterface,
@@ -169,6 +163,7 @@ private:
   ros::Subscriber cmd_gimbal_sub_;
   ros::Subscriber data_track_sub_;
   ros::Subscriber odom_sub_;
+  ros::Publisher test;
   realtime_tools::RealtimeBuffer<rm_msgs::GimbalCmd> cmd_rt_buffer_;
   realtime_tools::RealtimeBuffer<rm_msgs::TrackData> track_rt_buffer_;
   realtime_tools::RealtimeBuffer<nav_msgs::Odometry> odom_rt_buffer_;
@@ -192,7 +187,8 @@ private:
   bool enable_gravity_compensation_;
 
   // Chassis
-  geometry_msgs::Twist chassis_vel_;
+  std::shared_ptr<ChassisVel> chassis_vel_;
+  geometry_msgs::Twist chassis_origin_vel_;
 
   bool dynamic_reconfig_initialized_{};
   GimbalConfig config_{};

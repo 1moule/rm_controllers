@@ -64,6 +64,7 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
 
   ros::NodeHandle chassis_vel_nh(controller_nh, "chassis_vel");
   ros::NodeHandle nh_bullet_solver = ros::NodeHandle(controller_nh, "bullet_solver");
+  chassis_vel_ = std::make_shared<ChassisVel>(chassis_vel_nh);
   bullet_solver_ = std::make_shared<BulletSolver>(nh_bullet_solver);
 
   ros::NodeHandle nh_yaw = ros::NodeHandle(controller_nh, "yaw");
@@ -142,6 +143,7 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
   chassis_vel_pub_.reset(new realtime_tools::RealtimePublisher<geometry_msgs::Twist>(controller_nh, "chassis_vel", 100));
   yaw_pos_state_pub_.reset(new realtime_tools::RealtimePublisher<rm_msgs::GimbalPosState>(nh_yaw, "pos_state", 1));
   pitch_pos_state_pub_.reset(new realtime_tools::RealtimePublisher<rm_msgs::GimbalPosState>(nh_pitch, "pos_state", 1));
+  test = controller_nh.advertise<rm_msgs::TrackData>("test", 1);
 
   ramp_rate_pitch_ = new RampFilter<double>(0, 0.001);
   ramp_rate_yaw_ = new RampFilter<double>(0, 0.001);
@@ -304,7 +306,7 @@ void Controller::track(const ros::Time& time)
   target_vel.z -= data_odom_.twist.twist.linear.z;
   bool solve_success = bullet_solver_->solve(target_pos, target_vel, cmd_gimbal_.bullet_speed, yaw, data_track_.v_yaw,
                                              data_track_.radius_1, data_track_.radius_2, data_track_.dz,
-                                             data_track_.armors_num, chassis_vel_.angular.z);
+                                             data_track_.armors_num, chassis_origin_vel_.angular.z);
   bullet_solver_->judgeShootBeforehand(time);
 
   if (publish_rate_ > 0.0 && last_publish_time_ + ros::Duration(1.0 / publish_rate_) < time)
@@ -480,7 +482,7 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
     }
   }
 
-  ctrl_yaw_.setCommand(pid_yaw_pos_.getCurrentCmd() - config_.k_chassis_vel_ * chassis_vel_.angular.z +
+  ctrl_yaw_.setCommand(pid_yaw_pos_.getCurrentCmd() - config_.k_chassis_vel_ * chassis_origin_vel_.angular.z +
                        config_.yaw_k_v_ * yaw_vel_des + ctrl_yaw_.joint_.getVelocity() - angular_vel_yaw.z);
   ctrl_pitch_.setCommand(pid_pitch_pos_.getCurrentCmd() + config_.pitch_k_v_ * pitch_vel_des +
                          ctrl_pitch_.joint_.getVelocity() - angular_vel_pitch.y);
@@ -520,12 +522,33 @@ void Controller::updateChassisVel(const ros::Time& time)
     ROS_WARN("%s", ex.what());
     return;
   }
-  chassis_vel_ = data_odom_.twist.twist;
+  chassis_origin_vel_ = data_odom_.twist.twist;
+  geometry_msgs::Vector3 gyro, chassis_accel;
+  if (has_imu_)
+  {
+    gyro.x = imu_sensor_handle_.getLinearAcceleration()[0];
+    gyro.y = imu_sensor_handle_.getLinearAcceleration()[1];
+    gyro.z = imu_sensor_handle_.getLinearAcceleration()[2];
+    try
+    {
+      tf2::doTransform(gyro, chassis_accel,
+                       robot_state_handle_.lookupTransform("odom", imu_sensor_handle_.getFrameId(), time));
+    }
+    catch (tf2::TransformException& ex)
+    {
+      ROS_WARN("%s", ex.what());
+      return;
+    }
+    rm_msgs::TrackData data;
+    data.velocity = chassis_accel;
+    test.publish(data);
+  }
+  chassis_vel_->update(chassis_origin_vel_.linear.x, chassis_accel.x);
   if (loop_count_ % 10 == 0)
   {
     if (chassis_vel_pub_->trylock())
     {
-      chassis_vel_pub_->msg_ = chassis_vel_;
+      chassis_vel_pub_->msg_ = chassis_origin_vel_;
       chassis_vel_pub_->unlockAndPublish();
     }
   }
