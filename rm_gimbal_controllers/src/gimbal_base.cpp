@@ -543,7 +543,7 @@ void Controller::updateChassisVel(const ros::Time& time)
     data.velocity = chassis_accel;
     test.publish(data);
   }
-  chassis_vel_->update(chassis_origin_vel_.linear.x, chassis_accel.x);
+  chassis_vel_->update(chassis_origin_vel_.linear, chassis_accel);
   if (loop_count_ % 10 == 0)
   {
     if (chassis_vel_pub_->trylock())

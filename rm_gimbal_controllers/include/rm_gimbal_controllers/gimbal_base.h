@@ -73,41 +73,44 @@ public:
   {
     nh.param("debug", is_debug_, true);
     // Set up filter
-    Mat2<double> A, B, H, Q, R;
-    Vec2<double> x;
-
-    A << 1., 0.001, 0., 1.;
-
-    B << 0., 0., 0., 0.;
-
-    H << 1., 0., 0., 0.;
-
-    Q << 0.5, 0., 0., 80.0;
-
-    R << 0.05, 0., 0., 0.05;
-
-    x << 0., 0.;
-    u_ << 0., 0.;
-
+    Eigen::Matrix<double, 6, 6> A, B, H, Q, R;
+    Eigen::Matrix<double, 6, 1> x;
+    double dt = 0.001;
+    // clang-format off
+    A << 1., 0., 0., dt, 0., 0.,
+        0., 1., 0., 0., dt, 0.,
+        0., 0., 1., 0., 0., dt,
+        0., 0., 0., 1., 0., 0.,
+        0., 0., 0., 0., 1., 0.,
+        0., 0., 0., 0., 0., 1.;
+    // clang-format on
+    B.setZero();
+    H.setIdentity();
+    Q.setZero();
+    Q.diagonal() << 0.1, 0.1, 0.1, 0.1, 0.1, 0.1;
+    R.setZero();
+    R.diagonal() << 0.05, 0.05, 0.05, 0.05, 0.05, 0.05;
+    x.setZero();
+    u_.setZero();
     filter = std::make_unique<KalmanFilter<double>>(A, B, H, Q, R);
     filter->clear(x);
-
     if (is_debug_)
-      filtered_pub_.reset(new realtime_tools::RealtimePublisher<std_msgs::Float64>(nh, "filtered", 1));
+      filtered_pub_.reset(new realtime_tools::RealtimePublisher<geometry_msgs::Vector3>(nh, "linear_filtered", 1));
   }
-  void update(double vel, double acc)
+  void update(geometry_msgs::Vector3 vel, geometry_msgs::Vector3 acc)
   {
-    Eigen::Matrix<double, 2, 1> z;
-    z << vel, acc;
+    Eigen::Matrix<double, 6, 1> z;
+    z << vel.x, vel.y, vel.z, acc.x, acc.y, acc.z;
     filter->predict(u_);
     filter->update(z);
     if (is_debug_ && loop_count_ % 10 == 0)
     {
       if (filtered_pub_->trylock())
       {
-        Vec2<double> x_hat;
-        x_hat = filter->getState();
-        filtered_pub_->msg_.data = x_hat[0];
+        auto x_hat = filter->getState();
+        filtered_pub_->msg_.x = x_hat[0];
+        filtered_pub_->msg_.y = x_hat[1];
+        filtered_pub_->msg_.z = x_hat[2];
         filtered_pub_->unlockAndPublish();
       }
     }
@@ -118,8 +121,8 @@ public:
 private:
   bool is_debug_;
   int loop_count_;
-  Vec2<double> u_;
-  std::shared_ptr<realtime_tools::RealtimePublisher<std_msgs::Float64>> filtered_pub_{};
+  Eigen::Matrix<double, 6, 1> u_;
+  std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::Vector3>> filtered_pub_{};
 };
 
 class Controller : public controller_interface::MultiInterfaceController<rm_control::RobotStateInterface,
