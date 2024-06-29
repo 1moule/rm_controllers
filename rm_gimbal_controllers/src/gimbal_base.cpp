@@ -301,9 +301,9 @@ void Controller::track(const ros::Time& time)
   target_pos.x += target_vel.x * (time - data_track_.header.stamp).toSec() - odom2pitch_.transform.translation.x;
   target_pos.y += target_vel.y * (time - data_track_.header.stamp).toSec() - odom2pitch_.transform.translation.y;
   target_pos.z += target_vel.z * (time - data_track_.header.stamp).toSec() - odom2pitch_.transform.translation.z;
-  target_vel.x -= data_odom_.twist.twist.linear.x;
-  target_vel.y -= data_odom_.twist.twist.linear.y;
-  target_vel.z -= data_odom_.twist.twist.linear.z;
+  target_vel.x -= chassis_vel_->filter->getState()[0];
+  target_vel.y -= chassis_vel_->filter->getState()[1];
+  target_vel.z -= chassis_vel_->filter->getState()[2];
   bool solve_success = bullet_solver_->solve(target_pos, target_vel, cmd_gimbal_.bullet_speed, yaw, data_track_.v_yaw,
                                              data_track_.radius_1, data_track_.radius_2, data_track_.dz,
                                              data_track_.armors_num, chassis_origin_vel_.angular.z);
