@@ -482,7 +482,7 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
     }
   }
 
-  ctrl_yaw_.setCommand(pid_yaw_pos_.getCurrentCmd() - config_.k_chassis_vel_ * chassis_origin_vel_.angular.z +
+  ctrl_yaw_.setCommand(pid_yaw_pos_.getCurrentCmd() - config_.k_chassis_vel_ * data_odom_.twist.twist.angular.z +
                        config_.yaw_k_v_ * yaw_vel_des + ctrl_yaw_.joint_.getVelocity() - angular_vel_yaw.z);
   ctrl_pitch_.setCommand(pid_pitch_pos_.getCurrentCmd() + config_.pitch_k_v_ * pitch_vel_des +
                          ctrl_pitch_.joint_.getVelocity() - angular_vel_pitch.y);
@@ -514,15 +514,14 @@ void Controller::updateChassisVel(const ros::Time& time)
 {
   try
   {
-    tf2::doTransform(data_odom_.twist.twist.linear, data_odom_.twist.twist.linear, odom2base_);
-    tf2::doTransform(data_odom_.twist.twist.angular, data_odom_.twist.twist.angular, odom2base_);
+    tf2::doTransform(data_odom_.twist.twist.linear, chassis_origin_vel_.linear, odom2base_);
+    tf2::doTransform(data_odom_.twist.twist.angular, chassis_origin_vel_.angular, odom2base_);
   }
   catch (tf2::TransformException& ex)
   {
     ROS_WARN("%s", ex.what());
     return;
   }
-  chassis_origin_vel_ = data_odom_.twist.twist;
   geometry_msgs::Vector3 gyro, chassis_accel;
   if (has_imu_)
   {
