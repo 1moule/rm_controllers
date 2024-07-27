@@ -165,6 +165,7 @@ private:
   ros::Time last_publish_time_{};
   std::unique_ptr<realtime_tools::RealtimePublisher<rm_msgs::GimbalPosState>> yaw_pos_state_pub_, pitch_pos_state_pub_;
   std::shared_ptr<realtime_tools::RealtimePublisher<rm_msgs::GimbalDesError>> error_pub_;
+  std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::Twist>> chassis_vel_pub_;
   ros::Subscriber cmd_gimbal_sub_;
   ros::Subscriber data_track_sub_;
   ros::Subscriber odom_sub_;
