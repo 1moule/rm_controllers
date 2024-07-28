@@ -63,6 +63,7 @@ struct GimbalConfig
 {
   double yaw_k_v_, pitch_k_v_, k_chassis_vel_;
   double accel_pitch_{}, accel_yaw_{};
+  double a, b, k1, k2, k3;
 };
 
 class ChassisVel

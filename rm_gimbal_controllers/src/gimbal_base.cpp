@@ -76,7 +76,12 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
               .pitch_k_v_ = getParam(nh_pitch, "k_v", 0.),
               .k_chassis_vel_ = getParam(controller_nh, "yaw/k_chassis_vel", 0.),
               .accel_pitch_ = getParam(controller_nh, "pitch/accel", 99.),
-              .accel_yaw_ = getParam(controller_nh, "yaw/accel", 99.) };
+              .accel_yaw_ = getParam(controller_nh, "yaw/accel", 99.),
+              .a = getParam(chassis_vel_nh, "a", 1.5),
+              .b = getParam(chassis_vel_nh, "b", 8.5),
+              .k1 = getParam(chassis_vel_nh, "k1", 0.05),
+              .k2 = getParam(chassis_vel_nh, "k2", 0.05),
+              .k3 = getParam(chassis_vel_nh, "k3", 0.05) };
   config_rt_buffer_.initRT(config_);
   d_srv_ = new dynamic_reconfigure::Server<rm_gimbal_controllers::GimbalBaseConfig>(controller_nh);
   dynamic_reconfigure::Server<rm_gimbal_controllers::GimbalBaseConfig>::CallbackType cb =
@@ -491,7 +496,18 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
 
   ctrl_yaw_.update(time, period);
   ctrl_pitch_.update(time, period);
-  ctrl_yaw_.joint_.setCommand(ctrl_yaw_.joint_.getCommand() - config_.k_chassis_vel_ * data_odom_.twist.twist.angular.z);
+  double compensation{};
+  if (config_.k1 * config_.a - config_.k2 * (config_.b - config_.a) < 0.)
+    config_.k2 = -config_.k1 * config_.a / (config_.b - config_.a);
+  if (abs(data_odom_.twist.twist.angular.z) < config_.a)
+    compensation = config_.k1 * data_odom_.twist.twist.angular.z;
+  else if (abs(data_odom_.twist.twist.angular.z) >= config_.a && abs(data_odom_.twist.twist.angular.z) < config_.b)
+    compensation = config_.k1 * config_.a - config_.k2 * (abs(data_odom_.twist.twist.angular.z) - config_.a);
+  else
+    compensation = config_.k1 * config_.a - config_.k2 * (config_.b - config_.a) +
+                   config_.k3 * (abs(data_odom_.twist.twist.angular.z) - config_.b);
+  compensation = data_odom_.twist.twist.angular.z > 0 ? compensation : -compensation;
+  ctrl_yaw_.joint_.setCommand(ctrl_yaw_.joint_.getCommand() - compensation);
   ctrl_pitch_.joint_.setCommand(ctrl_pitch_.joint_.getCommand() + feedForward(time));
 }
 
@@ -570,13 +586,23 @@ void Controller::reconfigCB(rm_gimbal_controllers::GimbalBaseConfig& config, uin
     config.k_chassis_vel_ = init_config.k_chassis_vel_;
     config.accel_pitch_ = init_config.accel_pitch_;
     config.accel_yaw_ = init_config.accel_yaw_;
+    config.a = init_config.a;
+    config.b = init_config.b;
+    config.k1 = init_config.k1;
+    config.k2 = init_config.k2;
+    config.k3 = init_config.k3;
     dynamic_reconfig_initialized_ = true;
   }
   GimbalConfig config_non_rt{ .yaw_k_v_ = config.yaw_k_v_,
                               .pitch_k_v_ = config.pitch_k_v_,
                               .k_chassis_vel_ = config.k_chassis_vel_,
                               .accel_pitch_ = config.accel_pitch_,
-                              .accel_yaw_ = config.accel_yaw_ };
+                              .accel_yaw_ = config.accel_yaw_,
+                              .a = config.a,
+                              .b = config.b,
+                              .k1 = config.k1,
+                              .k2 = config.k2,
+                              .k3 = config.k3 };
   config_rt_buffer_.writeFromNonRT(config_non_rt);
 }
 
