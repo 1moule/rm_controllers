@@ -136,7 +136,7 @@ public:
   bool init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& root_nh, ros::NodeHandle& controller_nh) override;
   void starting(const ros::Time& time) override;
   void update(const ros::Time& time, const ros::Duration& period) override;
-  void setDes(const ros::Time& time, double yaw_des, double pitch_des);
+  void setDes(const ros::Time& time, double yaw_des, double pitch_des, double roll_des);
 
 private:
   void rate(const ros::Time& time, const ros::Duration& period);
@@ -155,8 +155,8 @@ private:
   rm_control::RobotStateHandle robot_state_handle_;
   hardware_interface::ImuSensorHandle imu_sensor_handle_;
   bool has_imu_ = true;
-  effort_controllers::JointVelocityController ctrl_yaw_, ctrl_pitch_;
-  control_toolbox::Pid pid_yaw_pos_, pid_pitch_pos_;
+  effort_controllers::JointVelocityController ctrl_yaw_, ctrl_pitch_, ctrl_roll_;
+  control_toolbox::Pid pid_yaw_pos_, pid_pitch_pos_, pid_roll_pos_;
 
   std::shared_ptr<BulletSolver> bullet_solver_;
 
@@ -168,14 +168,14 @@ private:
   ros::Subscriber data_track_sub_;
   realtime_tools::RealtimeBuffer<rm_msgs::GimbalCmd> cmd_rt_buffer_;
   realtime_tools::RealtimeBuffer<rm_msgs::TrackData> track_rt_buffer_;
-  urdf::JointConstSharedPtr pitch_joint_urdf_, yaw_joint_urdf_;
+  urdf::JointConstSharedPtr pitch_joint_urdf_, yaw_joint_urdf_, roll_joint_urdf_;
 
   rm_msgs::GimbalCmd cmd_gimbal_;
   rm_msgs::TrackData data_track_;
   std::string gimbal_des_frame_id_{}, imu_name_{};
   double publish_rate_{};
   bool state_changed_{};
-  bool pitch_des_in_limit_{}, yaw_des_in_limit_{};
+  bool pitch_des_in_limit_{}, yaw_des_in_limit_{}, roll_des_in_limit_{};
   int loop_count_{};
 
   // Transform
