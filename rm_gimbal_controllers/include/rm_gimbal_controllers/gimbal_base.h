@@ -162,7 +162,8 @@ private:
 
   // ROS Interface
   ros::Time last_publish_time_{};
-  std::unique_ptr<realtime_tools::RealtimePublisher<rm_msgs::GimbalPosState>> yaw_pos_state_pub_, pitch_pos_state_pub_;
+  std::unique_ptr<realtime_tools::RealtimePublisher<rm_msgs::GimbalPosState>> yaw_pos_state_pub_, pitch_pos_state_pub_,
+      roll_pos_state_pub_;
   std::shared_ptr<realtime_tools::RealtimePublisher<rm_msgs::GimbalDesError>> error_pub_;
   ros::Subscriber cmd_gimbal_sub_;
   ros::Subscriber data_track_sub_;
@@ -174,6 +175,7 @@ private:
   rm_msgs::TrackData data_track_;
   std::string gimbal_des_frame_id_{}, imu_name_{};
   double publish_rate_{};
+  double roll_des_{};
   bool state_changed_{};
   bool pitch_des_in_limit_{}, yaw_des_in_limit_{}, roll_des_in_limit_{};
   int loop_count_{};

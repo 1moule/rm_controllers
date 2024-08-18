@@ -150,6 +150,7 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
   error_pub_.reset(new realtime_tools::RealtimePublisher<rm_msgs::GimbalDesError>(controller_nh, "error", 100));
   yaw_pos_state_pub_.reset(new realtime_tools::RealtimePublisher<rm_msgs::GimbalPosState>(nh_yaw, "pos_state", 1));
   pitch_pos_state_pub_.reset(new realtime_tools::RealtimePublisher<rm_msgs::GimbalPosState>(nh_pitch, "pos_state", 1));
+  roll_pos_state_pub_.reset(new realtime_tools::RealtimePublisher<rm_msgs::GimbalPosState>(nh_roll, "pos_state", 1));
 
   ramp_rate_pitch_ = new RampFilter<double>(0, 0.001);
   ramp_rate_yaw_ = new RampFilter<double>(0, 0.001);
@@ -179,6 +180,9 @@ void Controller::update(const ros::Time& time, const ros::Duration& period)
   {
     odom2pitch_ = robot_state_handle_.lookupTransform("odom", pitch_joint_urdf_->child_link_name, time);
     odom2base_ = robot_state_handle_.lookupTransform("odom", yaw_joint_urdf_->parent_link_name, time);
+    double pitch_temp{}, yaw_temp{};
+    quatToRPY(odom2pitch_.transform.rotation, roll_des_, pitch_temp, yaw_temp);
+    roll_des_ = -roll_des_;
   }
   catch (tf2::TransformException& ex)
   {
@@ -294,7 +298,8 @@ void Controller::rate(const ros::Time& time, const ros::Duration& period)
   {
     double roll{}, pitch{}, yaw{};
     quatToRPY(odom2gimbal_des_.transform.rotation, roll, pitch, yaw);
-    setDes(time, yaw + period.toSec() * cmd_gimbal_.rate_yaw, pitch + period.toSec() * cmd_gimbal_.rate_pitch, roll);
+    setDes(time, yaw + period.toSec() * cmd_gimbal_.rate_yaw, pitch + period.toSec() * cmd_gimbal_.rate_pitch,
+           roll_des_);
   }
 }
 
@@ -360,7 +365,7 @@ void Controller::track(const ros::Time& time)
   }
 
   if (solve_success)
-    setDes(time, bullet_solver_->getYaw(), bullet_solver_->getPitch(), 0.);
+    setDes(time, bullet_solver_->getYaw(), bullet_solver_->getPitch(), roll_des_);
   else
   {
     odom2gimbal_des_.header.stamp = time;
@@ -392,7 +397,7 @@ void Controller::direct(const ros::Time& time)
   double pitch = -std::atan2(aim_point_odom.z - odom2pitch_.transform.translation.z,
                              std::sqrt(std::pow(aim_point_odom.x - odom2pitch_.transform.translation.x, 2) +
                                        std::pow(aim_point_odom.y - odom2pitch_.transform.translation.y, 2)));
-  setDes(time, yaw, pitch, 0.);
+  setDes(time, yaw, pitch, roll_des_);
 }
 
 void Controller::traj(const ros::Time& time)
@@ -402,7 +407,7 @@ void Controller::traj(const ros::Time& time)
     state_changed_ = false;
     ROS_INFO("[Gimbal] Enter TRAJ");
   }
-  setDes(time, cmd_gimbal_.traj_yaw, cmd_gimbal_.traj_pitch, 0.);
+  setDes(time, cmd_gimbal_.traj_yaw, cmd_gimbal_.traj_pitch, roll_des_);
 }
 
 bool Controller::setDesIntoLimit(double& real_des, double current_des, double base2gimbal_current_des,
@@ -526,6 +531,16 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
       pitch_pos_state_pub_->msg_.error = angles::shortest_angular_distance(pitch_real, pitch_des);
       pitch_pos_state_pub_->msg_.command = pid_pitch_pos_.getCurrentCmd();
       pitch_pos_state_pub_->unlockAndPublish();
+    }
+    if (roll_pos_state_pub_ && roll_pos_state_pub_->trylock())
+    {
+      roll_pos_state_pub_->msg_.header.stamp = time;
+      roll_pos_state_pub_->msg_.set_point = roll_des_;
+      roll_pos_state_pub_->msg_.set_point_dot = 0.;
+      roll_pos_state_pub_->msg_.process_value = roll_real;
+      roll_pos_state_pub_->msg_.error = angles::shortest_angular_distance(roll_real, roll_des_);
+      roll_pos_state_pub_->msg_.command = pid_roll_pos_.getCurrentCmd();
+      roll_pos_state_pub_->unlockAndPublish();
     }
   }
   loop_count_++;
