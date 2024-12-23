@@ -64,6 +64,17 @@ struct GimbalConfig
   double accel_pitch_{}, accel_yaw_{};
 };
 
+struct CtrlSet
+{
+  effort_controllers::JointVelocityController ctrl;
+  control_toolbox::Pid pid_pos;
+  std::unique_ptr<realtime_tools::RealtimePublisher<rm_msgs::GimbalPosState>> pos_state_pub;
+  urdf::JointConstSharedPtr joint_urdf_;
+  double pos_des, pos_real_des, pos_real;
+  double vel_des, angular_vel;
+  bool pos_des_in_limit_{};
+};
+
 class ChassisVel
 {
 public:
@@ -155,27 +166,23 @@ private:
   rm_control::RobotStateHandle robot_state_handle_;
   hardware_interface::ImuSensorHandle imu_sensor_handle_;
   bool has_imu_ = true;
-  effort_controllers::JointVelocityController ctrl_yaw_, ctrl_pitch_;
-  control_toolbox::Pid pid_yaw_pos_, pid_pitch_pos_;
+  std::map<std::string, CtrlSet*>* ctrls_;
 
   std::shared_ptr<BulletSolver> bullet_solver_;
 
   // ROS Interface
   ros::Time last_publish_time_{};
-  std::unique_ptr<realtime_tools::RealtimePublisher<rm_msgs::GimbalPosState>> yaw_pos_state_pub_, pitch_pos_state_pub_;
   std::shared_ptr<realtime_tools::RealtimePublisher<rm_msgs::GimbalDesError>> error_pub_;
   ros::Subscriber cmd_gimbal_sub_;
   ros::Subscriber data_track_sub_;
   realtime_tools::RealtimeBuffer<rm_msgs::GimbalCmd> cmd_rt_buffer_;
   realtime_tools::RealtimeBuffer<rm_msgs::TrackData> track_rt_buffer_;
-  urdf::JointConstSharedPtr pitch_joint_urdf_, yaw_joint_urdf_;
 
   rm_msgs::GimbalCmd cmd_gimbal_;
   rm_msgs::TrackData data_track_;
   std::string gimbal_des_frame_id_{}, imu_name_{};
   double publish_rate_{};
   bool state_changed_{};
-  bool pitch_des_in_limit_{}, yaw_des_in_limit_{};
   int loop_count_{};
 
   // Transform
