@@ -126,15 +126,17 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
   {
     ROS_INFO("Param imu_name has not set, use motors' data instead of imu.");
   }
-  gimbal_des_frame_id_ = ctrls_->find("pitch")->second->joint_urdf_->child_link_name + "_des";
+  gimbal_des_frame_id_ = "gimbal_des";
   odom2gimbal_des_.header.frame_id = "odom";
   odom2gimbal_des_.child_frame_id = gimbal_des_frame_id_;
   odom2gimbal_des_.transform.rotation.w = 1.;
-  odom2pitch_.header.frame_id = "odom";
-  odom2pitch_.child_frame_id = ctrls_->find("pitch")->second->joint_urdf_->child_link_name;
-  odom2pitch_.transform.rotation.w = 1.;
+  odom2gimbal_.header.frame_id = "odom";
+  odom2gimbal_.child_frame_id = ctrls_->find("pitch") != ctrls_->end() ?
+                                    ctrls_->find("pitch")->second->joint_urdf_->child_link_name :
+                                    ctrls_->find("yaw")->second->joint_urdf_->child_link_name;
+  odom2gimbal_.transform.rotation.w = 1.;
   odom2base_.header.frame_id = "odom";
-  odom2base_.child_frame_id = ctrls_->find("yaw")->second->joint_urdf_->parent_link_name;
+  odom2base_.child_frame_id = "base_link";
   odom2base_.transform.rotation.w = 1.;
 
   cmd_gimbal_sub_ = controller_nh.subscribe<rm_msgs::GimbalCmd>("command", 1, &Controller::commandCB, this);
@@ -168,10 +170,8 @@ void Controller::update(const ros::Time& time, const ros::Duration& period)
   cmd_gimbal_.rate_yaw = ramp_rate_yaw_->output();
   try
   {
-    odom2pitch_ =
-        robot_state_handle_.lookupTransform("odom", ctrls_->find("pitch")->second->joint_urdf_->child_link_name, time);
-    odom2base_ =
-        robot_state_handle_.lookupTransform("odom", ctrls_->find("yaw")->second->joint_urdf_->parent_link_name, time);
+    odom2gimbal_ = robot_state_handle_.lookupTransform("odom", odom2gimbal_.child_frame_id, time);
+    odom2base_ = robot_state_handle_.lookupTransform("odom", "base_link", time);
   }
   catch (tf2::TransformException& ex)
   {
@@ -244,7 +244,8 @@ void Controller::setDes(const ros::Time& time, double yaw_des, double pitch_des)
     }
   }
   odom2gimbal_des_.transform.rotation = tf::createQuaternionMsgFromRollPitchYaw(
-      0., ctrls_->find("pitch")->second->pos_real_des, ctrls_->find("yaw")->second->pos_real_des);
+      0., ctrls_->find("pitch") != ctrls_->end() ? ctrls_->find("pitch")->second->pos_real_des : 0.,
+      ctrls_->find("yaw") != ctrls_->end() ? ctrls_->find("yaw")->second->pos_real_des : 0.);
   odom2gimbal_des_.header.stamp = time;
   robot_state_handle_.setTransform(odom2gimbal_des_, "rm_gimbal_controllers");
 }
@@ -257,7 +258,7 @@ void Controller::rate(const ros::Time& time, const ros::Duration& period)
     ROS_INFO("[Gimbal] Enter RATE");
     if (start_)
     {
-      odom2gimbal_des_.transform.rotation = odom2pitch_.transform.rotation;
+      odom2gimbal_des_.transform.rotation = odom2gimbal_.transform.rotation;
       odom2gimbal_des_.header.stamp = time;
       robot_state_handle_.setTransform(odom2gimbal_des_, "rm_gimbal_controllers");
       start_ = false;
@@ -279,7 +280,7 @@ void Controller::track(const ros::Time& time)
     ROS_INFO("[Gimbal] Enter TRACK");
   }
   double roll_real, pitch_real, yaw_real;
-  quatToRPY(odom2pitch_.transform.rotation, roll_real, pitch_real, yaw_real);
+  quatToRPY(odom2gimbal_.transform.rotation, roll_real, pitch_real, yaw_real);
   double yaw_compute = yaw_real;
   double pitch_compute = -pitch_real;
   geometry_msgs::Point target_pos = data_track_.position;
@@ -305,9 +306,9 @@ void Controller::track(const ros::Time& time)
     yaw -= 2 * M_PI;
   while (yaw < -M_PI)
     yaw += 2 * M_PI;
-  target_pos.x += target_vel.x * (time - data_track_.header.stamp).toSec() - odom2pitch_.transform.translation.x;
-  target_pos.y += target_vel.y * (time - data_track_.header.stamp).toSec() - odom2pitch_.transform.translation.y;
-  target_pos.z += target_vel.z * (time - data_track_.header.stamp).toSec() - odom2pitch_.transform.translation.z;
+  target_pos.x += target_vel.x * (time - data_track_.header.stamp).toSec() - odom2gimbal_.transform.translation.x;
+  target_pos.y += target_vel.y * (time - data_track_.header.stamp).toSec() - odom2gimbal_.transform.translation.y;
+  target_pos.z += target_vel.z * (time - data_track_.header.stamp).toSec() - odom2gimbal_.transform.translation.z;
   target_vel.x -= chassis_vel_->linear_->x();
   target_vel.y -= chassis_vel_->linear_->y();
   target_vel.z -= chassis_vel_->linear_->z();
@@ -328,7 +329,7 @@ void Controller::track(const ros::Time& time)
       error_pub_->msg_.error = solve_success ? error : 1.0;
       error_pub_->unlockAndPublish();
     }
-    bullet_solver_->bulletModelPub(odom2pitch_, time);
+    bullet_solver_->bulletModelPub(odom2gimbal_, time);
     last_publish_time_ = time;
   }
 
@@ -360,11 +361,11 @@ void Controller::direct(const ros::Time& time)
   {
     ROS_WARN("%s", ex.what());
   }
-  double yaw = std::atan2(aim_point_odom.y - odom2pitch_.transform.translation.y,
-                          aim_point_odom.x - odom2pitch_.transform.translation.x);
-  double pitch = -std::atan2(aim_point_odom.z - odom2pitch_.transform.translation.z,
-                             std::sqrt(std::pow(aim_point_odom.x - odom2pitch_.transform.translation.x, 2) +
-                                       std::pow(aim_point_odom.y - odom2pitch_.transform.translation.y, 2)));
+  double yaw = std::atan2(aim_point_odom.y - odom2gimbal_.transform.translation.y,
+                          aim_point_odom.x - odom2gimbal_.transform.translation.x);
+  double pitch = -std::atan2(aim_point_odom.z - odom2gimbal_.transform.translation.z,
+                             std::sqrt(std::pow(aim_point_odom.x - odom2gimbal_.transform.translation.x, 2) +
+                                       std::pow(aim_point_odom.y - odom2gimbal_.transform.translation.y, 2)));
   setDes(time, yaw, pitch);
 }
 
@@ -419,11 +420,11 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
     else
       ctrl.second->angular_vel = ctrl.second->ctrl.joint_.getVelocity();
   }
-  double roll_real;
-  quatToRPY(odom2pitch_.transform.rotation, roll_real, ctrls_->find("pitch")->second->pos_real,
-            ctrls_->find("yaw")->second->pos_real);
+  double roll_real, pitch_real, yaw_real;
+  quatToRPY(odom2gimbal_.transform.rotation, roll_real, pitch_real, yaw_real);
   for (const auto& ctrl : *ctrls_)
   {
+    ctrl.second->pos_real = ctrl.first == "pitch" ? pitch_real : yaw_real;
     // pos loop output
     double angle_error = angles::shortest_angular_distance(ctrl.second->pos_real, ctrl.second->pos_real_des);
     ctrl.second->pid_pos.computeCommand(angle_error, period);
@@ -485,8 +486,9 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
                                  ctrl.second->ctrl.joint_.getVelocity() - ctrl.second->angular_vel);
     ctrl.second->ctrl.update(time, period);
   }
-  ctrls_->find("pitch")->second->ctrl.joint_.setCommand(ctrls_->find("pitch")->second->ctrl.joint_.getCommand() +
-                                                        feedForward(time));
+  if (ctrls_->find("pitch") != ctrls_->end())
+    ctrls_->find("pitch")->second->ctrl.joint_.setCommand(ctrls_->find("pitch")->second->ctrl.joint_.getCommand() +
+                                                          feedForward(time));
 }
 
 double Controller::feedForward(const ros::Time& time)

@@ -186,7 +186,7 @@ private:
   int loop_count_{};
 
   // Transform
-  geometry_msgs::TransformStamped odom2gimbal_des_, odom2pitch_, odom2base_, last_odom2base_;
+  geometry_msgs::TransformStamped odom2gimbal_des_, odom2gimbal_, odom2base_, last_odom2base_;
 
   // Gravity Compensation
   geometry_msgs::Vector3 mass_origin_;
