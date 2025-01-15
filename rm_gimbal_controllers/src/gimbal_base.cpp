@@ -474,10 +474,10 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
                                  (ctrl.first == "pitch" ? config_.pitch_k_v_ : config_.yaw_k_v_) * ctrl.second->vel_des +
                                  ctrl.second->ctrl.joint_.getVelocity() - ctrl.second->angular_vel);
     ctrl.second->ctrl.update(time, period);
+    if (ctrls_->find("pitch") != ctrls_->end())
+      ctrls_->find("pitch")->second->ctrl.joint_.setCommand(ctrls_->find("pitch")->second->ctrl.joint_.getCommand() +
+                                                            feedForward(time));
   }
-  if (ctrls_->find("pitch") != ctrls_->end())
-    ctrls_->find("pitch")->second->ctrl.joint_.setCommand(ctrls_->find("pitch")->second->ctrl.joint_.getCommand() +
-                                                          feedForward(time));
   loop_count_++;
 }
 
