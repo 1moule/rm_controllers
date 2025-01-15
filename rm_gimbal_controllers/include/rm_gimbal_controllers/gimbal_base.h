@@ -181,7 +181,7 @@ private:
 
   rm_msgs::GimbalCmd cmd_gimbal_;
   rm_msgs::TrackData data_track_;
-  std::string gimbal_des_frame_id_{}, imu_name_{};
+  std::string imu_name_{};
   double publish_rate_{};
   bool state_changed_{};
   int loop_count_{};
@@ -204,7 +204,7 @@ private:
 
   RampFilter<double>*ramp_rate_pitch_{}, *ramp_rate_yaw_{};
 
-  enum
+  enum GimbalMode
   {
     RATE,
     TRACK,

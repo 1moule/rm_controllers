@@ -126,9 +126,8 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
   {
     ROS_INFO("Param imu_name has not set, use motors' data instead of imu.");
   }
-  gimbal_des_frame_id_ = "gimbal_des";
   odom2gimbal_des_.header.frame_id = "odom";
-  odom2gimbal_des_.child_frame_id = gimbal_des_frame_id_;
+  odom2gimbal_des_.child_frame_id = "gimbal_des";
   odom2gimbal_des_.transform.rotation.w = 1.;
   odom2gimbal_.header.frame_id = "odom";
   odom2gimbal_.child_frame_id = ctrls_->find("pitch") != ctrls_->end() ?
