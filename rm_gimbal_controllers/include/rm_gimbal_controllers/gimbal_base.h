@@ -55,6 +55,7 @@
 #include <urdf/model.h>
 #include <dynamic_reconfigure/server.h>
 #include <realtime_tools/realtime_publisher.h>
+#include <unordered_map>
 
 namespace rm_gimbal_controllers
 {
@@ -210,6 +211,13 @@ private:
     DIRECT,
     TRAJ
   };
+  enum Axis
+  {
+    ROLL,
+    PITCH,
+    YAW
+  };
+  std::unordered_map<std::string, Axis> axis_map = { { "roll", ROLL }, { "pitch", PITCH }, { "yaw", YAW } };
   int state_ = RATE;
   bool start_ = false;
 };

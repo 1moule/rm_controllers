@@ -209,15 +209,17 @@ void Controller::setDes(const ros::Time& time, double yaw_des, double pitch_des)
   tf2::fromMsg(odom2base_.transform.rotation, odom2base);
   odom2gimbal_des.setRPY(0, pitch_des, yaw_des);
   base2gimbal_des = odom2base.inverse() * odom2gimbal_des;
-  double roll_temp, base2gimbal_current_des_pitch, base2gimbal_current_des_yaw;
-  quatToRPY(toMsg(base2gimbal_des), roll_temp, base2gimbal_current_des_pitch, base2gimbal_current_des_yaw);
+  double gimbal_euler_angles_des[3] = { 0., pitch_des, yaw_des };
+  double roll_temp;
+  double base2gimbal_current_des[3];
+  quatToRPY(toMsg(base2gimbal_des), base2gimbal_current_des[ROLL], base2gimbal_current_des[PITCH],
+            base2gimbal_current_des[YAW]);
   for (const auto& ctrl : *ctrls_)
   {
-    ctrl.second->pos_des = ctrl.first == "pitch" ? pitch_des : yaw_des;
-    double base2gimbal_current_des =
-        ctrl.first == "pitch" ? base2gimbal_current_des_pitch : base2gimbal_current_des_yaw;
-    ctrl.second->pos_des_in_limit_ = setDesIntoLimit(ctrl.second->pos_real_des, ctrl.second->pos_des,
-                                                     base2gimbal_current_des, ctrl.second->joint_urdf_);
+    ctrl.second->pos_des = gimbal_euler_angles_des[axis_map.find(ctrl.first)->second];
+    ctrl.second->pos_des_in_limit_ =
+        setDesIntoLimit(ctrl.second->pos_real_des, ctrl.second->pos_des,
+                        base2gimbal_current_des[axis_map.find(ctrl.first)->second], ctrl.second->joint_urdf_);
     if (!ctrl.second->pos_des_in_limit_)
     {
       double temp;
@@ -225,20 +227,14 @@ void Controller::setDes(const ros::Time& time, double yaw_des, double pitch_des)
       double upper_limit, lower_limit;
       upper_limit = ctrl.second->joint_urdf_->limits ? ctrl.second->joint_urdf_->limits->upper : 1e16;
       lower_limit = ctrl.second->joint_urdf_->limits ? ctrl.second->joint_urdf_->limits->lower : -1e16;
-      base2new_des.setRPY(
-          0,
-          ctrl.first == "pitch" ?
-              (std::abs(angles::shortest_angular_distance(base2gimbal_current_des, upper_limit)) <
-                       std::abs(angles::shortest_angular_distance(base2gimbal_current_des, lower_limit)) ?
-                   upper_limit :
-                   lower_limit) :
-              base2gimbal_current_des,
-          ctrl.first == "yaw" ?
-              (std::abs(angles::shortest_angular_distance(base2gimbal_current_des, upper_limit)) <
-                       std::abs(angles::shortest_angular_distance(base2gimbal_current_des, lower_limit)) ?
-                   upper_limit :
-                   lower_limit) :
-              base2gimbal_current_des);
+      base2gimbal_current_des[axis_map.find(ctrl.first)->second] =
+          std::abs(angles::shortest_angular_distance(base2gimbal_current_des[axis_map.find(ctrl.first)->second],
+                                                     upper_limit)) <
+                  std::abs(angles::shortest_angular_distance(base2gimbal_current_des[axis_map.find(ctrl.first)->second],
+                                                             lower_limit)) ?
+              upper_limit :
+              lower_limit;
+      base2new_des.setRPY(base2gimbal_current_des[ROLL], base2gimbal_current_des[PITCH], base2gimbal_current_des[YAW]);
       quatToRPY(toMsg(odom2base * base2new_des), roll_temp, ctrl.first == "pitch" ? ctrl.second->pos_real_des : temp,
                 ctrl.first == "yaw" ? ctrl.second->pos_real_des : temp);
     }
@@ -396,6 +392,8 @@ bool Controller::setDesIntoLimit(double& real_des, double current_des, double ba
 
 void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
 {
+  double gimbal_pos_real[3];
+  quatToRPY(odom2gimbal_.transform.rotation, gimbal_pos_real[ROLL], gimbal_pos_real[PITCH], gimbal_pos_real[YAW]);
   geometry_msgs::Vector3 gyro, angular_vel;
   for (const auto& ctrl : *ctrls_)
   {
@@ -419,14 +417,9 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
     }
     else
       ctrl.second->angular_vel = ctrl.second->ctrl.joint_.getVelocity();
-  }
-  double roll_real, pitch_real, yaw_real;
-  quatToRPY(odom2gimbal_.transform.rotation, roll_real, pitch_real, yaw_real);
-  for (const auto& ctrl : *ctrls_)
-  {
-    ctrl.second->pos_real = ctrl.first == "pitch" ? pitch_real : yaw_real;
     // pos loop output
-    double angle_error = angles::shortest_angular_distance(ctrl.second->pos_real, ctrl.second->pos_real_des);
+    double angle_error = angles::shortest_angular_distance(gimbal_pos_real[axis_map.find(ctrl.first)->second],
+                                                           ctrl.second->pos_real_des);
     ctrl.second->pid_pos.computeCommand(angle_error, period);
 
     // velocity feedforward
@@ -470,17 +463,13 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
         ctrl.second->pos_state_pub->msg_.header.stamp = time;
         ctrl.second->pos_state_pub->msg_.set_point = ctrl.second->pos_real_des;
         ctrl.second->pos_state_pub->msg_.set_point_dot = ctrl.second->vel_des;
-        ctrl.second->pos_state_pub->msg_.process_value = ctrl.second->pos_real;
+        ctrl.second->pos_state_pub->msg_.process_value = gimbal_pos_real[axis_map.find(ctrl.first)->second];
         ctrl.second->pos_state_pub->msg_.error = angle_error;
         ctrl.second->pos_state_pub->msg_.command = ctrl.second->pid_pos.getCurrentCmd();
         ctrl.second->pos_state_pub->unlockAndPublish();
       }
     }
-  }
-  loop_count_++;
 
-  for (const auto& ctrl : *ctrls_)
-  {
     ctrl.second->ctrl.setCommand(ctrl.second->pid_pos.getCurrentCmd() +
                                  (ctrl.first == "pitch" ? config_.pitch_k_v_ : config_.yaw_k_v_) * ctrl.second->vel_des +
                                  ctrl.second->ctrl.joint_.getVelocity() - ctrl.second->angular_vel);
@@ -489,6 +478,7 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
   if (ctrls_->find("pitch") != ctrls_->end())
     ctrls_->find("pitch")->second->ctrl.joint_.setCommand(ctrls_->find("pitch")->second->ctrl.joint_.getCommand() +
                                                           feedForward(time));
+  loop_count_++;
 }
 
 double Controller::feedForward(const ros::Time& time)
