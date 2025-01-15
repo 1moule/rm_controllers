@@ -70,14 +70,18 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
   hardware_interface::EffortJointInterface* effort_joint_interface =
       robot_hw->get<hardware_interface::EffortJointInterface>();
   ctrls_ = new std::map<std::string, CtrlSet*>;
-  if (controller_nh.getParam("ctrls", xml_rpc_value))
+  if (controller_nh.getParam("controllers", xml_rpc_value))
   {
     for (const auto& it : xml_rpc_value)
     {
+      if (it.first != "roll" && it.first != "pitch" && it.first != "yaw")
+      {
+        ROS_ERROR("Namespace under controllers should be roll or pitch or yaw, but it has: %s", it.first.c_str());
+        return false;
+      }
       CtrlSet* ctrl_set = new CtrlSet;
-      ros::NodeHandle nh = ros::NodeHandle(controller_nh, "ctrls/" + it.first);
-      ros::NodeHandle nh_pid_pos = ros::NodeHandle(controller_nh, "ctrls/" + it.first + "/pid_pos");
-
+      ros::NodeHandle nh = ros::NodeHandle(controller_nh, "controllers/" + it.first);
+      ros::NodeHandle nh_pid_pos = ros::NodeHandle(controller_nh, "controllers/" + it.first + "/pid_pos");
       if (!ctrl_set->ctrl.init(effort_joint_interface, nh) || !ctrl_set->pid_pos.init(nh_pid_pos))
         return false;
 
@@ -101,11 +105,11 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
   }
 
   // dynamic reconfigure
-  config_ = { .yaw_k_v_ = getParam(controller_nh, "ctrls/yaw/k_v", 0.),
-              .pitch_k_v_ = getParam(controller_nh, "ctrls/pitch/k_v", 0.),
-              .k_chassis_vel_ = getParam(controller_nh, "ctrls/yaw/k_chassis_vel", 0.),
-              .accel_pitch_ = getParam(controller_nh, "ctrls/pitch/accel", 99.),
-              .accel_yaw_ = getParam(controller_nh, "ctrls/yaw/accel", 99.) };
+  config_ = { .yaw_k_v_ = getParam(controller_nh, "controllers/yaw/k_v", 0.),
+              .pitch_k_v_ = getParam(controller_nh, "controllers/pitch/k_v", 0.),
+              .k_chassis_vel_ = getParam(controller_nh, "controllers/yaw/k_chassis_vel", 0.),
+              .accel_pitch_ = getParam(controller_nh, "controllers/pitch/accel", 99.),
+              .accel_yaw_ = getParam(controller_nh, "controllers/yaw/accel", 99.) };
   config_rt_buffer_.initRT(config_);
   d_srv_ = new dynamic_reconfigure::Server<rm_gimbal_controllers::GimbalBaseConfig>(controller_nh);
   dynamic_reconfigure::Server<rm_gimbal_controllers::GimbalBaseConfig>::CallbackType cb =
@@ -130,9 +134,14 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
   odom2gimbal_des_.child_frame_id = "gimbal_des";
   odom2gimbal_des_.transform.rotation.w = 1.;
   odom2gimbal_.header.frame_id = "odom";
-  odom2gimbal_.child_frame_id = ctrls_->find("pitch") != ctrls_->end() ?
-                                    ctrls_->find("pitch")->second->joint_urdf_->child_link_name :
-                                    ctrls_->find("yaw")->second->joint_urdf_->child_link_name;
+  odom2gimbal_.child_frame_id = [this]() {
+    for (const auto& axis : { "pitch", "roll", "yaw" })
+    {
+      if (ctrls_->find(axis) != ctrls_->end())
+        return ctrls_->find(axis)->second->joint_urdf_->child_link_name;
+    }
+    return std::string{};
+  }();
   odom2gimbal_.transform.rotation.w = 1.;
   odom2base_.header.frame_id = "odom";
   odom2base_.child_frame_id = "base_link";
@@ -209,7 +218,6 @@ void Controller::setDes(const ros::Time& time, double yaw_des, double pitch_des)
   odom2gimbal_des.setRPY(0, pitch_des, yaw_des);
   base2gimbal_des = odom2base.inverse() * odom2gimbal_des;
   double gimbal_pos_des[3] = { 0., pitch_des, yaw_des };
-  double roll_temp;
   double base2gimbal_current_des[3];
   quatToRPY(toMsg(base2gimbal_des), base2gimbal_current_des[ROLL], base2gimbal_current_des[PITCH],
             base2gimbal_current_des[YAW]);
@@ -220,9 +228,9 @@ void Controller::setDes(const ros::Time& time, double yaw_des, double pitch_des)
                         base2gimbal_current_des[axis_map.find(ctrl.first)->second], ctrl.second->joint_urdf_);
     if (!ctrl.second->pos_des_in_limit_)
     {
-      double temp;
-      tf2::Quaternion base2new_des;
+      double roll_temp, pitch_temp, yaw_temp;
       double upper_limit, lower_limit;
+      tf2::Quaternion base2new_des;
       upper_limit = ctrl.second->joint_urdf_->limits ? ctrl.second->joint_urdf_->limits->upper : 1e16;
       lower_limit = ctrl.second->joint_urdf_->limits ? ctrl.second->joint_urdf_->limits->lower : -1e16;
       base2gimbal_current_des[axis_map.find(ctrl.first)->second] =
@@ -233,12 +241,14 @@ void Controller::setDes(const ros::Time& time, double yaw_des, double pitch_des)
               upper_limit :
               lower_limit;
       base2new_des.setRPY(base2gimbal_current_des[ROLL], base2gimbal_current_des[PITCH], base2gimbal_current_des[YAW]);
-      quatToRPY(toMsg(odom2base * base2new_des), roll_temp, ctrl.first == "pitch" ? ctrl.second->pos_real_des : temp,
-                ctrl.first == "yaw" ? ctrl.second->pos_real_des : temp);
+      quatToRPY(toMsg(odom2base * base2new_des), ctrl.first == "roll" ? ctrl.second->pos_real_des : roll_temp,
+                ctrl.first == "pitch" ? ctrl.second->pos_real_des : pitch_temp,
+                ctrl.first == "yaw" ? ctrl.second->pos_real_des : yaw_temp);
     }
   }
   odom2gimbal_des_.transform.rotation = tf::createQuaternionMsgFromRollPitchYaw(
-      0., ctrls_->find("pitch") != ctrls_->end() ? ctrls_->find("pitch")->second->pos_real_des : 0.,
+      ctrls_->find("roll") != ctrls_->end() ? ctrls_->find("pitch")->second->pos_real_des : 0.,
+      ctrls_->find("pitch") != ctrls_->end() ? ctrls_->find("pitch")->second->pos_real_des : 0.,
       ctrls_->find("yaw") != ctrls_->end() ? ctrls_->find("yaw")->second->pos_real_des : 0.);
   odom2gimbal_des_.header.stamp = time;
   robot_state_handle_.setTransform(odom2gimbal_des_, "rm_gimbal_controllers");
