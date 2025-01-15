@@ -209,16 +209,15 @@ void Controller::setDes(const ros::Time& time, double yaw_des, double pitch_des)
   tf2::fromMsg(odom2base_.transform.rotation, odom2base);
   odom2gimbal_des.setRPY(0, pitch_des, yaw_des);
   base2gimbal_des = odom2base.inverse() * odom2gimbal_des;
-  double gimbal_euler_angles_des[3] = { 0., pitch_des, yaw_des };
+  double gimbal_pos_des[3] = { 0., pitch_des, yaw_des };
   double roll_temp;
   double base2gimbal_current_des[3];
   quatToRPY(toMsg(base2gimbal_des), base2gimbal_current_des[ROLL], base2gimbal_current_des[PITCH],
             base2gimbal_current_des[YAW]);
   for (const auto& ctrl : *ctrls_)
   {
-    ctrl.second->pos_des = gimbal_euler_angles_des[axis_map.find(ctrl.first)->second];
     ctrl.second->pos_des_in_limit_ =
-        setDesIntoLimit(ctrl.second->pos_real_des, ctrl.second->pos_des,
+        setDesIntoLimit(ctrl.second->pos_real_des, gimbal_pos_des[axis_map.find(ctrl.first)->second],
                         base2gimbal_current_des[axis_map.find(ctrl.first)->second], ctrl.second->joint_urdf_);
     if (!ctrl.second->pos_des_in_limit_)
     {
@@ -417,14 +416,12 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
     }
     else
       ctrl.second->angular_vel = ctrl.second->ctrl.joint_.getVelocity();
-    // pos loop output
     double angle_error = angles::shortest_angular_distance(gimbal_pos_real[axis_map.find(ctrl.first)->second],
                                                            ctrl.second->pos_real_des);
     ctrl.second->pid_pos.computeCommand(angle_error, period);
-
-    // velocity feedforward
+    double vel_des{};
     if (state_ == RATE)
-      ctrl.second->vel_des = ctrl.first == "pitch" ? cmd_gimbal_.rate_pitch : cmd_gimbal_.rate_yaw;
+      vel_des = ctrl.first == "pitch" ? cmd_gimbal_.rate_pitch : cmd_gimbal_.rate_yaw;
     else if (state_ == TRACK)
     {
       geometry_msgs::Point target_pos;
@@ -441,11 +438,11 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
         tf2::doTransform(target_vel, target_vel, transform);
         tf2::fromMsg(target_pos, target_pos_tf);
         tf2::fromMsg(target_vel, target_vel_tf);
-        ctrl.second->vel_des =
+        vel_des =
             (ctrl.first == "pitch" ? target_pos_tf.cross(target_vel_tf).y() : target_pos_tf.cross(target_vel_tf).z()) /
             std::pow((target_pos_tf.length()), 2);
         if (!ctrl.second->pos_des_in_limit_)
-          ctrl.second->vel_des = 0.;
+          vel_des = 0.;
       }
       catch (tf2::TransformException& ex)
       {
@@ -453,7 +450,14 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
       }
     }
     else
-      ctrl.second->vel_des = 0.;
+      vel_des = 0.;
+    ctrl.second->ctrl.setCommand(ctrl.second->pid_pos.getCurrentCmd() +
+                                 (ctrl.first == "pitch" ? config_.pitch_k_v_ : config_.yaw_k_v_) * vel_des +
+                                 ctrl.second->ctrl.joint_.getVelocity() - ctrl.second->angular_vel);
+    ctrl.second->ctrl.update(time, period);
+    if (ctrls_->find("pitch") != ctrls_->end())
+      ctrls_->find("pitch")->second->ctrl.joint_.setCommand(ctrls_->find("pitch")->second->ctrl.joint_.getCommand() +
+                                                            feedForward(time));
 
     // publish state
     if (loop_count_ % 10 == 0)
@@ -462,21 +466,13 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
       {
         ctrl.second->pos_state_pub->msg_.header.stamp = time;
         ctrl.second->pos_state_pub->msg_.set_point = ctrl.second->pos_real_des;
-        ctrl.second->pos_state_pub->msg_.set_point_dot = ctrl.second->vel_des;
+        ctrl.second->pos_state_pub->msg_.set_point_dot = vel_des;
         ctrl.second->pos_state_pub->msg_.process_value = gimbal_pos_real[axis_map.find(ctrl.first)->second];
         ctrl.second->pos_state_pub->msg_.error = angle_error;
         ctrl.second->pos_state_pub->msg_.command = ctrl.second->pid_pos.getCurrentCmd();
         ctrl.second->pos_state_pub->unlockAndPublish();
       }
     }
-
-    ctrl.second->ctrl.setCommand(ctrl.second->pid_pos.getCurrentCmd() +
-                                 (ctrl.first == "pitch" ? config_.pitch_k_v_ : config_.yaw_k_v_) * ctrl.second->vel_des +
-                                 ctrl.second->ctrl.joint_.getVelocity() - ctrl.second->angular_vel);
-    ctrl.second->ctrl.update(time, period);
-    if (ctrls_->find("pitch") != ctrls_->end())
-      ctrls_->find("pitch")->second->ctrl.joint_.setCommand(ctrls_->find("pitch")->second->ctrl.joint_.getCommand() +
-                                                            feedForward(time));
   }
   loop_count_++;
 }

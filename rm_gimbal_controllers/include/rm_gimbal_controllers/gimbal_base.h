@@ -71,8 +71,8 @@ struct CtrlSet
   control_toolbox::Pid pid_pos;
   std::unique_ptr<realtime_tools::RealtimePublisher<rm_msgs::GimbalPosState>> pos_state_pub;
   urdf::JointConstSharedPtr joint_urdf_;
-  double pos_des, pos_real_des, pos_real;
-  double vel_des, angular_vel;
+  double pos_real_des;
+  double angular_vel;
   bool pos_des_in_limit_{};
 };
 
