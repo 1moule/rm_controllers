@@ -155,6 +155,15 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
   ramp_rate_pitch_ = new RampFilter<double>(0, 0.001);
   ramp_rate_yaw_ = new RampFilter<double>(0, 0.001);
 
+  if (controller_nh.hasParam("follow"))
+  {
+    ros::NodeHandle follow_nh(controller_nh, "follow");
+    follow_nh.getParam("follow_target_frame", follow_target_frame_);
+    follow_nh.getParam("follow_source_frame", follow_source_frame_);
+    if (!pid_follow_.init(follow_nh))
+      return false;
+  }
+
   return true;
 }
 
@@ -196,6 +205,9 @@ void Controller::update(const ros::Time& time, const ros::Duration& period)
   {
     case RATE:
       rate(time, period);
+      break;
+    case FOLLOW:
+      follow(time, period);
       break;
     case TRACK:
       track(time);
@@ -371,6 +383,30 @@ void Controller::direct(const ros::Time& time)
                              std::sqrt(std::pow(aim_point_odom.x - odom2gimbal_.transform.translation.x, 2) +
                                        std::pow(aim_point_odom.y - odom2gimbal_.transform.translation.y, 2)));
   setDes(time, yaw, pitch);
+}
+
+void Controller::follow(const ros::Time& time, const ros::Duration& period)
+{
+  if (state_changed_)
+  {  // on enter
+    state_changed_ = false;
+    ROS_INFO("[Gimbal] Enter FOLLOW");
+  }
+  try
+  {
+    double roll{}, pitch{}, yaw{};
+    quatToRPY(
+        robot_state_handle_.lookupTransform(follow_source_frame_, follow_target_frame_, ros::Time(0)).transform.rotation,
+        roll, pitch, yaw);
+    double follow_error = angles::shortest_angular_distance(yaw, 0);
+    pid_follow_.computeCommand(-follow_error, period);
+    quatToRPY(odom2gimbal_des_.transform.rotation, roll, pitch, yaw);
+    setDes(time, yaw + period.toSec() * pid_follow_.getCurrentCmd(), 0.);
+  }
+  catch (tf2::TransformException& ex)
+  {
+    ROS_WARN("%s", ex.what());
+  }
 }
 
 void Controller::traj(const ros::Time& time)

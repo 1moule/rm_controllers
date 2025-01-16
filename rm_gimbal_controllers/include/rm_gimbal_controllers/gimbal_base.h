@@ -152,6 +152,7 @@ public:
 
 private:
   void rate(const ros::Time& time, const ros::Duration& period);
+  void follow(const ros::Time& time, const ros::Duration& period);
   void track(const ros::Time& time);
   void direct(const ros::Time& time);
   void traj(const ros::Time& time);
@@ -204,11 +205,15 @@ private:
 
   RampFilter<double>*ramp_rate_pitch_{}, *ramp_rate_yaw_{};
 
+  control_toolbox::Pid pid_follow_;
+  std::string follow_target_frame_{}, follow_source_frame_{};
+
   enum GimbalMode
   {
     RATE,
     TRACK,
     DIRECT,
+    FOLLOW,
     TRAJ
   };
   enum Axis
