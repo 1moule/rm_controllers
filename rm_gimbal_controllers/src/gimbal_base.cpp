@@ -188,7 +188,7 @@ void Controller::update(const ros::Time& time, const ros::Duration& period)
   try
   {
     odom2gimbal_ = robot_state_handle_.lookupTransform("odom", odom2gimbal_.child_frame_id, time);
-    odom2base_ = robot_state_handle_.lookupTransform("odom", "base_link", time);
+    odom2base_ = robot_state_handle_.lookupTransform("odom", odom2base_.child_frame_id, time);
   }
   catch (tf2::TransformException& ex)
   {
@@ -431,6 +431,7 @@ bool Controller::setDesIntoLimit(double& real_des, double current_des, double ba
     real_des = current_des;
   else
     return false;
+
   return true;
 }
 
