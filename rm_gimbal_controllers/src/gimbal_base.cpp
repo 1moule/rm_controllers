@@ -130,11 +130,7 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
   {
     ROS_INFO("Param imu_name has not set, use motors' data instead of imu.");
   }
-  odom2gimbal_des_.header.frame_id = "odom";
-  odom2gimbal_des_.child_frame_id = "gimbal_des";
-  odom2gimbal_des_.transform.rotation.w = 1.;
-  odom2gimbal_.header.frame_id = "odom";
-  odom2gimbal_.child_frame_id = [this]() {
+  std::string gimbal_frame_id = [this]() {
     for (const auto& axis : { "pitch", "roll", "yaw" })
     {
       if (ctrls_->find(axis) != ctrls_->end())
@@ -142,6 +138,11 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
     }
     return std::string{};
   }();
+  odom2gimbal_des_.header.frame_id = "odom";
+  odom2gimbal_des_.child_frame_id = gimbal_frame_id + "_des";
+  odom2gimbal_des_.transform.rotation.w = 1.;
+  odom2gimbal_.header.frame_id = "odom";
+  odom2gimbal_.child_frame_id = gimbal_frame_id;
   odom2gimbal_.transform.rotation.w = 1.;
   odom2base_.header.frame_id = "odom";
   odom2base_.child_frame_id = getParam(controller_nh, "base_frame_id", static_cast<std::string>("base_link"));
