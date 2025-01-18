@@ -402,7 +402,7 @@ void Controller::follow(const ros::Time& time, const ros::Duration& period)
     double follow_error = angles::shortest_angular_distance(yaw, 0);
     pid_follow_.computeCommand(-follow_error, period);
     quatToRPY(odom2gimbal_des_.transform.rotation, roll, pitch, yaw);
-    setDes(time, yaw + period.toSec() * pid_follow_.getCurrentCmd(), 0.);
+    setDes(time, yaw + period.toSec() * (pid_follow_.getCurrentCmd() + cmd_gimbal_.rate_yaw), 0.);
   }
   catch (tf2::TransformException& ex)
   {
@@ -469,6 +469,8 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
     double vel_des{};
     if (state_ == RATE)
       vel_des = ctrl.first == "pitch" ? cmd_gimbal_.rate_pitch : cmd_gimbal_.rate_yaw;
+    else if (state_ == FOLLOW)
+      vel_des = ctrl.first == "yaw" ? (pid_follow_.getCurrentCmd() + cmd_gimbal_.rate_yaw) : 0.;
     else if (state_ == TRACK)
     {
       geometry_msgs::Point target_pos;
