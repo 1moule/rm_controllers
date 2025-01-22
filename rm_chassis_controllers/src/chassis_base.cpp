@@ -174,6 +174,7 @@ void ChassisBase<T...>::update(const ros::Time& time, const ros::Duration& perio
   ramp_w_->input(vel_cmd_.z);
   vel_cmd_.z = ramp_w_->output();
 
+  feedforward(time);
   moveJoint(time, period);
   powerLimit();
 }
@@ -401,6 +402,24 @@ void ChassisBase<T...>::powerLimit()
     {
       joint.setCommand(zoom_coeff > 1 ? joint.getCommand() : joint.getCommand() * zoom_coeff);
     }
+}
+
+template <typename... T>
+void ChassisBase<T...>::feedforward(const ros::Time& time)
+{
+  tf2::Vector3 gravity(0, 0, -9.81);
+  try
+  {
+    tf2::Quaternion rotation;
+    tf2::fromMsg(robot_state_handle_.lookupTransform("base_link", "odom", time).transform.rotation, rotation);
+    gravity = tf2::quatRotate(rotation, gravity);
+  }
+  catch (tf2::TransformException& ex)
+  {
+    ROS_WARN("%s", ex.what());
+  }
+  vel_cmd_.x -= 0.12 * gravity.x();
+  vel_cmd_.y -= 0.12 * gravity.y();
 }
 
 template <typename... T>

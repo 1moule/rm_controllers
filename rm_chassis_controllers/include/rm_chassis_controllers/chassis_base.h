@@ -130,6 +130,7 @@ protected:
    * Receive power limit from command. Set max_effort command to chassis to avoid exceed power limit.
    */
   void powerLimit();
+  void feedforward(const ros::Time& time);
   /** @brief Write current command from rm_msgs::ChassisCmd.
    *
    * @param msg This message contains various state parameter settings for basic chassis control
