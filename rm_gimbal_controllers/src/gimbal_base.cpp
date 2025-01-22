@@ -512,18 +512,25 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
 
 double Controller::feedForward(const ros::Time& time)
 {
-  Eigen::Vector3d gravity(0, 0, -gravity_);
-  tf2::doTransform(gravity, gravity,
-                   robot_state_handle_.lookupTransform(pitch_joint_urdf_->child_link_name, "base_link", time));
+  tf2::Vector3 gravity(0, 0, -gravity_);
+  tf2::Quaternion rotation;
+  tf2::fromMsg(robot_state_handle_.lookupTransform(pitch_joint_urdf_->child_link_name, "odom", time).transform.rotation,
+               rotation);
+  gravity = tf2::quatRotate(rotation, gravity);
+  Eigen::Vector3d gravity_temp(gravity.x(), gravity.y(), gravity.z());
   Eigen::Vector3d mass_origin(mass_origin_.x, 0, mass_origin_.z);
-  double feedforward = -mass_origin.cross(gravity).y();
+  double feedforward = -mass_origin.cross(gravity_temp).y();
   if (enable_gravity_compensation_)
   {
-    Eigen::Vector3d gravity_compensation(0, 0, gravity_);
-    tf2::doTransform(gravity_compensation, gravity_compensation,
-                     robot_state_handle_.lookupTransform(pitch_joint_urdf_->child_link_name,
-                                                         pitch_joint_urdf_->parent_link_name, time));
-    feedforward -= mass_origin.cross(gravity_compensation).y();
+    tf2::Vector3 gravity_compensation(0, 0, gravity_);
+    tf2::fromMsg(robot_state_handle_
+                     .lookupTransform(pitch_joint_urdf_->child_link_name, pitch_joint_urdf_->parent_link_name, time)
+                     .transform.rotation,
+                 rotation);
+    gravity_compensation = tf2::quatRotate(rotation, gravity_compensation);
+    Eigen::Vector3d gravity_compensation_temp(gravity_compensation.x(), gravity_compensation.y(),
+                                              gravity_compensation.z());
+    feedforward -= mass_origin.cross(gravity_compensation_temp).y();
   }
   return feedforward;
 }
