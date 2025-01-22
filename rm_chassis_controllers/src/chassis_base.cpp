@@ -65,6 +65,12 @@ bool ChassisBase<T...>::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
   max_odom_vel_ = getParam(controller_nh, "max_odom_vel", 0);
   enable_odom_tf_ = getParam(controller_nh, "enable_odom_tf", true);
   publish_odom_tf_ = getParam(controller_nh, "publish_odom_tf", false);
+  config_ = { .k_x = getParam(controller_nh, "k_x", 0.), .k_y = getParam(controller_nh, "k_y", 0.) };
+  config_rt_buffer_.initRT(config_);
+  d_srv_ = new dynamic_reconfigure::Server<rm_chassis_controllers::ChassisBaseConfig>(controller_nh);
+  dynamic_reconfigure::Server<rm_chassis_controllers::ChassisBaseConfig>::CallbackType cb =
+      [this](auto&& PH1, auto&& PH2) { reconfigCB(PH1, PH2); };
+  d_srv_->setCallback(cb);
 
   // Get and check params for covariances
   XmlRpc::XmlRpcValue twist_cov_list;
@@ -122,7 +128,7 @@ void ChassisBase<T...>::update(const ros::Time& time, const ros::Duration& perio
 {
   rm_msgs::ChassisCmd cmd_chassis = cmd_rt_buffer_.readFromRT()->cmd_chassis_;
   geometry_msgs::Twist cmd_vel = cmd_rt_buffer_.readFromRT()->cmd_vel_;
-
+  config_ = *config_rt_buffer_.readFromRT();
   if ((time - cmd_rt_buffer_.readFromRT()->stamp_).toSec() > timeout_)
   {
     vel_cmd_.x = 0.;
@@ -418,8 +424,8 @@ void ChassisBase<T...>::feedforward(const ros::Time& time)
   {
     ROS_WARN("%s", ex.what());
   }
-  vel_cmd_.x -= 0.12 * gravity.x();
-  vel_cmd_.y -= 0.12 * gravity.y();
+  vel_cmd_.x -= config_.k_x * gravity.x();
+  vel_cmd_.y -= config_.k_y * gravity.y();
 }
 
 template <typename... T>
@@ -457,4 +463,18 @@ void ChassisBase<T...>::outsideOdomCallback(const nav_msgs::Odometry::ConstPtr& 
   topic_update_ = true;
 }
 
+template <typename... T>
+void ChassisBase<T...>::reconfigCB(rm_chassis_controllers::ChassisBaseConfig& config, uint32_t)
+{
+  ROS_INFO("[Chassis Base] Dynamic params change");
+  if (!dynamic_reconfig_initialized_)
+  {
+    ChassisConfig init_config = *config_rt_buffer_.readFromNonRT();  // config init use yaml
+    config.k_x = init_config.k_x;
+    config.k_y = init_config.k_y;
+    dynamic_reconfig_initialized_ = true;
+  }
+  ChassisConfig config_non_rt{ .k_x = config.k_x, .k_y = config.k_y };
+  config_rt_buffer_.writeFromNonRT(config_non_rt);
+}
 }  // namespace rm_chassis_controllers

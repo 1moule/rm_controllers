@@ -48,6 +48,8 @@
 #include <geometry_msgs/Vector3Stamped.h>
 #include <nav_msgs/Odometry.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <dynamic_reconfigure/server.h>
+#include <rm_chassis_controllers/ChassisBaseConfig.h>
 
 namespace rm_chassis_controllers
 {
@@ -56,6 +58,10 @@ struct Command
   geometry_msgs::Twist cmd_vel_;
   rm_msgs::ChassisCmd cmd_chassis_;
   ros::Time stamp_;
+};
+struct ChassisConfig
+{
+  double k_x, k_y;
 };
 template <typename... T>
 class ChassisBase : public controller_interface::MultiInterfaceController<T...>
@@ -142,6 +148,7 @@ protected:
    */
   void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg);
   void outsideOdomCallback(const nav_msgs::Odometry::ConstPtr& msg);
+  void reconfigCB(rm_chassis_controllers::ChassisBaseConfig& config, uint32_t);
 
   rm_control::RobotStateHandle robot_state_handle_{};
   hardware_interface::EffortJointInterface* effort_joint_interface_{};
@@ -178,6 +185,11 @@ protected:
   Command cmd_struct_;
   realtime_tools::RealtimeBuffer<Command> cmd_rt_buffer_;
   realtime_tools::RealtimeBuffer<nav_msgs::Odometry> odom_buffer_;
+
+  bool dynamic_reconfig_initialized_{};
+  ChassisConfig config_{};
+  realtime_tools::RealtimeBuffer<ChassisConfig> config_rt_buffer_;
+  dynamic_reconfigure::Server<rm_chassis_controllers::ChassisBaseConfig>* d_srv_{};
 };
 
 }  // namespace rm_chassis_controllers
