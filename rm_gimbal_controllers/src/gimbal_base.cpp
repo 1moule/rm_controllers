@@ -89,6 +89,15 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
       !pid_yaw_pos_.init(nh_pid_yaw_pos) || !pid_pitch_pos_.init(nh_pid_pitch_pos))
     return false;
 
+  if (controller_nh.hasParam("follow"))
+  {
+    ros::NodeHandle follow_nh(controller_nh, "follow");
+    follow_nh.getParam("follow_target_frame", follow_target_frame_);
+    follow_nh.getParam("follow_source_frame", follow_source_frame_);
+    if (!pid_follow_.init(follow_nh))
+      return false;
+  }
+
   robot_state_handle_ = robot_hw->get<rm_control::RobotStateInterface>()->getHandle("robot_state");
   if (!controller_nh.hasParam("imu_name"))
     has_imu_ = false;
@@ -192,6 +201,9 @@ void Controller::update(const ros::Time& time, const ros::Duration& period)
       break;
     case DIRECT:
       direct(time);
+      break;
+    case FOLLOW:
+      follow(time, period);
       break;
     case TRAJ:
       traj(time);
@@ -339,6 +351,30 @@ void Controller::direct(const ros::Time& time)
   setDes(time, yaw, pitch);
 }
 
+void Controller::follow(const ros::Time& time, const ros::Duration& period)
+{
+  if (state_changed_)
+  {  // on enter
+    state_changed_ = false;
+    ROS_INFO("[Gimbal] Enter FOLLOW");
+  }
+  try
+  {
+    double roll{}, pitch{}, yaw{};
+    quatToRPY(
+        robot_state_handle_.lookupTransform(follow_source_frame_, follow_target_frame_, ros::Time(0)).transform.rotation,
+        roll, pitch, yaw);
+    double follow_error = angles::shortest_angular_distance(yaw, 0);
+    pid_follow_.computeCommand(-follow_error, period);
+    quatToRPY(odom2gimbal_des_.transform.rotation, roll, pitch, yaw);
+    setDes(time, yaw + period.toSec() * (pid_follow_.getCurrentCmd() + cmd_gimbal_.rate_yaw), pitch);
+  }
+  catch (tf2::TransformException& ex)
+  {
+    ROS_WARN("%s", ex.what());
+  }
+}
+
 void Controller::traj(const ros::Time& time)
 {
   if (state_changed_)
@@ -409,6 +445,11 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
   if (state_ == RATE)
   {
     yaw_vel_des = cmd_gimbal_.rate_yaw;
+    pitch_vel_des = cmd_gimbal_.rate_pitch;
+  }
+  else if (state_ == FOLLOW)
+  {
+    yaw_vel_des = pid_follow_.getCurrentCmd() + cmd_gimbal_.rate_yaw;
     pitch_vel_des = cmd_gimbal_.rate_pitch;
   }
   else if (state_ == TRACK)

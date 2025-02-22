@@ -142,6 +142,7 @@ private:
   void rate(const ros::Time& time, const ros::Duration& period);
   void track(const ros::Time& time);
   void direct(const ros::Time& time);
+  void follow(const ros::Time& time, const ros::Duration& period);
   void traj(const ros::Time& time);
   bool setDesIntoLimit(double& real_des, double current_des, double base2gimbal_current_des, double temp,
                        const urdf::JointConstSharedPtr& joint_urdf, tf2::Quaternion& base2new_des);
@@ -154,9 +155,11 @@ private:
 
   rm_control::RobotStateHandle robot_state_handle_;
   hardware_interface::ImuSensorHandle imu_sensor_handle_;
-  bool has_imu_ = true;
   effort_controllers::JointVelocityController ctrl_yaw_, ctrl_pitch_;
   control_toolbox::Pid pid_yaw_pos_, pid_pitch_pos_;
+  control_toolbox::Pid pid_follow_;
+  std::string follow_target_frame_{}, follow_source_frame_{};
+  bool has_imu_ = true;
 
   std::shared_ptr<BulletSolver> bullet_solver_;
 
@@ -201,6 +204,7 @@ private:
     RATE,
     TRACK,
     DIRECT,
+    FOLLOW,
     TRAJ
   };
   int state_ = RATE;
