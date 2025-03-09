@@ -102,6 +102,8 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
   }
 
   ros::NodeHandle nh_trigger = ros::NodeHandle(controller_nh, "trigger");
+  td_ = std::make_unique<NonlinearTrackingDifferentiator<double>>(100.0, 0.001);
+  lt_ = std::make_unique<LinearTrajectoryPlanner<double>>();
   return ctrl_trigger_.init(effort_joint_interface_, nh_trigger);
 }
 
@@ -147,10 +149,14 @@ void Controller::update(const ros::Time& time, const ros::Duration& period)
       break;
   }
   judgeBulletShoot(time, period);
+  td_->update(ctrl_trigger_.command_struct_.position_);
+  lt_->update(ctrl_trigger_.command_struct_.position_, 1. / cmd_.hz);
   if (shoot_state_pub_->trylock())
   {
     shoot_state_pub_->msg_.stamp = time;
     shoot_state_pub_->msg_.state = state_;
+    shoot_state_pub_->msg_.set_point = td_->getX1();
+    shoot_state_pub_->msg_.set_point_dot = lt_->getX1();
     shoot_state_pub_->unlockAndPublish();
   }
   for (auto& ctrl_friction_l : ctrls_friction_l_)
@@ -183,6 +189,8 @@ void Controller::ready(const ros::Duration& period)
     ROS_INFO("[Shooter] Enter READY");
 
     normalize();
+    td_->clear(ctrl_trigger_.command_struct_.position_, 0.);
+    lt_->clear(ctrl_trigger_.command_struct_.position_, 0.);
   }
 }
 

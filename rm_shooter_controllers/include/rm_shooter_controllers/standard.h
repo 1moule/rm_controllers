@@ -43,6 +43,7 @@
 #include <hardware_interface/joint_command_interface.h>
 #include <rm_common/hardware_interface/robot_state_interface.h>
 #include <rm_common/ros_utilities.h>
+#include <rm_common/traj_gen.h>
 #include <realtime_tools/realtime_publisher.h>
 #include <dynamic_reconfigure/server.h>
 #include <rm_shooter_controllers/ShooterConfig.h>
@@ -114,6 +115,8 @@ private:
   realtime_tools::RealtimeBuffer<Config> config_rt_buffer;
   realtime_tools::RealtimeBuffer<rm_msgs::ShootCmd> cmd_rt_buffer_;
   rm_msgs::ShootCmd cmd_;
+  std::unique_ptr<NonlinearTrackingDifferentiator<double>> td_;
+  std::unique_ptr<LinearTrajectoryPlanner<double>> lt_;
   std::shared_ptr<realtime_tools::RealtimePublisher<rm_msgs::LocalHeatState>> local_heat_state_pub_;
   std::shared_ptr<realtime_tools::RealtimePublisher<rm_msgs::ShootState>> shoot_state_pub_;
   ros::Subscriber cmd_subscriber_;
