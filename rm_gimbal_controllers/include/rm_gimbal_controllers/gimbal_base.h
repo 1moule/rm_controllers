@@ -62,8 +62,9 @@ namespace rm_gimbal_controllers
 {
 struct GimbalConfig
 {
-  double yaw_k_v_, pitch_k_v_, k_chassis_vel_;
-  double accel_pitch_{}, accel_yaw_{};
+  double yaw_k_v, pitch_k_v, k_chassis_vel;
+  double yaw_k_a, pitch_k_a;
+  double accel_pitch, accel_yaw;
 };
 
 class ChassisVel
@@ -164,6 +165,7 @@ private:
   std::unordered_map<int, urdf::JointConstSharedPtr> joint_urdfs_;
   std::unordered_map<int, bool> pos_des_in_limit_;
   bool has_imu_ = true;
+  double last_vel_des_[3] = { 0. };
 
   std::shared_ptr<BulletSolver> bullet_solver_;
 
