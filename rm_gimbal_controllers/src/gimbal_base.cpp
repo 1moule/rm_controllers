@@ -175,8 +175,8 @@ void Controller::update(const ros::Time& time, const ros::Duration& period)
   ramp_rate_yaw_->setAcc(config_.accel_yaw);
   ramp_rate_pitch_->input(cmd_gimbal_.rate_pitch);
   ramp_rate_yaw_->input(cmd_gimbal_.rate_yaw);
-  cmd_gimbal_.rate_pitch = ramp_rate_pitch_->output();
-  cmd_gimbal_.rate_yaw = ramp_rate_yaw_->output();
+  //  cmd_gimbal_.rate_pitch = ramp_rate_pitch_->output();
+  //  cmd_gimbal_.rate_yaw = ramp_rate_yaw_->output();
   try
   {
     odom2gimbal_ = robot_state_handle_.lookupTransform("odom", odom2gimbal_.child_frame_id, time);
@@ -244,9 +244,10 @@ void Controller::rate(const ros::Time& time, const ros::Duration& period)
   }
   else
   {
-    double roll{}, pitch{}, yaw{};
-    quatToRPY(odom2gimbal_des_.transform.rotation, roll, pitch, yaw);
-    setDes(time, yaw + period.toSec() * cmd_gimbal_.rate_yaw, pitch + period.toSec() * cmd_gimbal_.rate_pitch);
+    double current[3]{ 0. }, des[3]{ 0. };
+    quatToRPY(odom2gimbal_des_.transform.rotation, des[0], des[1], des[2]);
+    quatToRPY(odom2gimbal_.transform.rotation, current[0], current[1], current[2]);
+    setDes(time, current[2], des[1] + period.toSec() * cmd_gimbal_.rate_pitch);
   }
 }
 
