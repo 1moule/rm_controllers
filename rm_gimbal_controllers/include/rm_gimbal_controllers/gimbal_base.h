@@ -156,6 +156,11 @@ private:
   void reconfigCB(rm_gimbal_controllers::GimbalBaseConfig& config, uint32_t);
   std::string getGimbalFrameID(std::unordered_map<int, urdf::JointConstSharedPtr> joint_urdfs);
   std::string getBaseFrameID(std::unordered_map<int, urdf::JointConstSharedPtr> joint_urdfs);
+  float FirstOrderLag(float input, float previous_output, float time_constant, float dt)
+  {
+    return previous_output + (input - previous_output) * (dt / (time_constant + dt));
+  }
+  double previous_output_{};
 
   rm_control::RobotStateHandle robot_state_handle_;
   hardware_interface::ImuSensorHandle imu_sensor_handle_;
@@ -165,7 +170,6 @@ private:
   std::unordered_map<int, urdf::JointConstSharedPtr> joint_urdfs_;
   std::unordered_map<int, bool> pos_des_in_limit_;
   bool has_imu_ = true;
-  double last_vel_des_[3] = { 0. };
 
   std::shared_ptr<BulletSolver> bullet_solver_;
 
@@ -200,8 +204,6 @@ private:
   GimbalConfig config_{};
   realtime_tools::RealtimeBuffer<GimbalConfig> config_rt_buffer_;
   dynamic_reconfigure::Server<rm_gimbal_controllers::GimbalBaseConfig>* d_srv_{};
-
-  RampFilter<double>*ramp_rate_pitch_{}, *ramp_rate_yaw_{};
 
   enum
   {

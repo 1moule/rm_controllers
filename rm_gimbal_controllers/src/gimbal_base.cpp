@@ -153,9 +153,6 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
   publish_rate_ = getParam(controller_nh, "publish_rate", 100.);
   error_pub_.reset(new realtime_tools::RealtimePublisher<rm_msgs::GimbalDesError>(controller_nh, "error", 100));
 
-  ramp_rate_pitch_ = new RampFilter<double>(0, 0.001);
-  ramp_rate_yaw_ = new RampFilter<double>(0, 0.001);
-
   return true;
 }
 
@@ -171,12 +168,6 @@ void Controller::update(const ros::Time& time, const ros::Duration& period)
   cmd_gimbal_ = *cmd_rt_buffer_.readFromRT();
   data_track_ = *track_rt_buffer_.readFromNonRT();
   config_ = *config_rt_buffer_.readFromRT();
-  ramp_rate_pitch_->setAcc(config_.accel_pitch);
-  ramp_rate_yaw_->setAcc(config_.accel_yaw);
-  ramp_rate_pitch_->input(cmd_gimbal_.rate_pitch);
-  ramp_rate_yaw_->input(cmd_gimbal_.rate_yaw);
-  //  cmd_gimbal_.rate_pitch = ramp_rate_pitch_->output();
-  //  cmd_gimbal_.rate_yaw = ramp_rate_yaw_->output();
   try
   {
     odom2gimbal_ = robot_state_handle_.lookupTransform("odom", odom2gimbal_.child_frame_id, time);
@@ -240,14 +231,15 @@ void Controller::rate(const ros::Time& time, const ros::Duration& period)
       for (auto& td : tracking_differentiator_)
         td.second->clear(des[td.first]);
       start_ = false;
+      previous_output_ = 0.;
     }
   }
   else
   {
-    double current[3]{ 0. }, des[3]{ 0. };
+    double des[3]{ 0. };
     quatToRPY(odom2gimbal_des_.transform.rotation, des[0], des[1], des[2]);
-    quatToRPY(odom2gimbal_.transform.rotation, current[0], current[1], current[2]);
-    setDes(time, current[2], des[1] + period.toSec() * cmd_gimbal_.rate_pitch);
+    previous_output_ = FirstOrderLag(cmd_gimbal_.rate_yaw, previous_output_, 0.02, 0.001);
+    setDes(time, des[2] + period.toSec() * previous_output_, des[1] + period.toSec() * cmd_gimbal_.rate_pitch);
   }
 }
 
@@ -452,14 +444,14 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
     if (ctrls_.find(2) != ctrls_.end())
       angular_vel.z = ctrls_.at(2)->joint_.getVelocity();
   }
-  double pos_real[3]{ 0. }, pos_des[3]{ 0. }, vel_des[3]{ 0. }, accel_des[3]{ 0. }, angle_error[3]{ 0. };
+  double pos_real[3]{ 0. }, pos_des[3]{ 0. }, vel_des[3]{ 0. }, angle_error[3]{ 0. };
   quatToRPY(odom2gimbal_des_.transform.rotation, pos_des[0], pos_des[1], pos_des[2]);
   quatToRPY(odom2gimbal_.transform.rotation, pos_real[0], pos_real[1], pos_real[2]);
   for (int i = 0; i < 3; i++)
     angle_error[i] = angles::shortest_angular_distance(pos_real[i], pos_des[i]);
   if (state_ == RATE)
   {
-    vel_des[2] = cmd_gimbal_.rate_yaw;
+    vel_des[2] = previous_output_;
     vel_des[1] = cmd_gimbal_.rate_pitch;
   }
   else if (state_ == TRACK)
@@ -507,22 +499,13 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
   for (const auto& in_limit : pos_des_in_limit_)
     if (!in_limit.second)
       vel_des[in_limit.first] = 0.;
-  for (int i = 0; i < 3; i++)
-  {
-    if (loop_count_ % 10 == 0)
-    {
-      accel_des[i] = (vel_des[i] - last_vel_des_[i]) / 0.01;
-      last_vel_des_[i] = vel_des[i];
-    }
-  }
   if (pid_pos_.find(1) != pid_pos_.end() && ctrls_.find(1) != ctrls_.end())
   {
     pid_pos_.at(1)->computeCommand(angle_error[1], period);
     ctrls_.at(1)->setCommand(pid_pos_.at(1)->getCurrentCmd() + config_.pitch_k_v * vel_des[1] +
                              ctrls_.at(1)->joint_.getVelocity() - angular_vel.y);
     ctrls_.at(1)->update(time, period);
-    ctrls_.at(1)->joint_.setCommand(ctrls_.at(1)->joint_.getCommand() + feedForward(time) +
-                                    config_.pitch_k_a * accel_des[1]);
+    ctrls_.at(1)->joint_.setCommand(ctrls_.at(1)->joint_.getCommand() + feedForward(time));
   }
   if (pid_pos_.find(2) != pid_pos_.end() && ctrls_.find(2) != ctrls_.end())
   {
@@ -530,7 +513,7 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
     ctrls_.at(2)->setCommand(pid_pos_.at(2)->getCurrentCmd() - config_.k_chassis_vel * chassis_vel_->angular_->z() +
                              config_.yaw_k_v * vel_des[2] + ctrls_.at(2)->joint_.getVelocity() - angular_vel.z);
     ctrls_.at(2)->update(time, period);
-    ctrls_.at(2)->joint_.setCommand(ctrls_.at(2)->joint_.getCommand() + config_.yaw_k_a * accel_des[2]);
+    ctrls_.at(2)->joint_.setCommand(ctrls_.at(2)->joint_.getCommand());
   }
 
   // publish state
@@ -542,7 +525,7 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
       {
         pub.second->msg_.header.stamp = time;
         pub.second->msg_.set_point = pos_des[pub.first];
-        pub.second->msg_.set_point_dot = accel_des[pub.first];
+        pub.second->msg_.set_point_dot = previous_output_;
         pub.second->msg_.process_value = pos_real[pub.first];
         pub.second->msg_.error = angles::shortest_angular_distance(pos_real[pub.first], pos_des[pub.first]);
         pub.second->msg_.command = tracking_differentiator_[pub.first]->getX1();
