@@ -70,8 +70,6 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
   config_ = { .yaw_k_v = getParam(controller_nh, "controllers/yaw/k_v", 0.),
               .pitch_k_v = getParam(controller_nh, "controllers/pitch/k_v", 0.),
               .k_chassis_vel = getParam(controller_nh, "controllers/yaw/k_chassis_vel", 0.),
-              .yaw_k_a = getParam(controller_nh, "controllers/yaw/k_a", 0.),
-              .pitch_k_a = getParam(controller_nh, "controllers/pitch/k_a", 0.),
               .accel_pitch = getParam(controller_nh, "controllers/pitch/accel", 99.),
               .accel_yaw = getParam(controller_nh, "controllers/yaw/accel", 99.) };
   config_rt_buffer_.initRT(config_);
@@ -621,8 +619,6 @@ void Controller::reconfigCB(rm_gimbal_controllers::GimbalBaseConfig& config, uin
     config.yaw_k_v = init_config.yaw_k_v;
     config.pitch_k_v = init_config.pitch_k_v;
     config.k_chassis_vel = init_config.k_chassis_vel;
-    config.yaw_k_a = init_config.yaw_k_a;
-    config.pitch_k_a = init_config.pitch_k_a;
     config.accel_pitch = init_config.accel_pitch;
     config.accel_yaw = init_config.accel_yaw;
     dynamic_reconfig_initialized_ = true;
@@ -630,8 +626,6 @@ void Controller::reconfigCB(rm_gimbal_controllers::GimbalBaseConfig& config, uin
   GimbalConfig config_non_rt{ .yaw_k_v = config.yaw_k_v,
                               .pitch_k_v = config.pitch_k_v,
                               .k_chassis_vel = config.k_chassis_vel,
-                              .yaw_k_a = config.yaw_k_a,
-                              .pitch_k_a = config.pitch_k_a,
                               .accel_pitch = config.accel_pitch,
                               .accel_yaw = config.accel_yaw };
   config_rt_buffer_.writeFromNonRT(config_non_rt);
