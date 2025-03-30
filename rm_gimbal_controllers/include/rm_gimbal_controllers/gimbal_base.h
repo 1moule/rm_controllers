@@ -156,7 +156,7 @@ private:
   void reconfigCB(rm_gimbal_controllers::GimbalBaseConfig& config, uint32_t);
   std::string getGimbalFrameID(std::unordered_map<int, urdf::JointConstSharedPtr> joint_urdfs);
   std::string getBaseFrameID(std::unordered_map<int, urdf::JointConstSharedPtr> joint_urdfs);
-  float FirstOrderLag(float input, float previous_output, float time_constant, float dt)
+  double FirstOrderLag(double input, double previous_output, double time_constant, double dt)
   {
     return previous_output + (input - previous_output) * (dt / (time_constant + dt));
   }
