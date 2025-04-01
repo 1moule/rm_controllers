@@ -440,26 +440,29 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
     bullet_solver_->getSelectedArmorPosAndVel(target_pos, target_vel, data_track_.position, data_track_.velocity,
                                               data_track_.yaw, data_track_.v_yaw, data_track_.radius_1,
                                               data_track_.radius_2, data_track_.dz, data_track_.armors_num);
+    target_vel.x -= chassis_vel_->linear_->x();
+    target_vel.y -= chassis_vel_->linear_->y();
+    target_vel.z -= chassis_vel_->linear_->z();
     tf2::Vector3 target_pos_tf, target_vel_tf;
     try
     {
       geometry_msgs::TransformStamped transform;
       if (joint_urdfs_.find(2) != joint_urdfs_.end())
       {
-        transform = robot_state_handle_.lookupTransform(odom2base_.child_frame_id, data_track_.header.frame_id,
-                                                        data_track_.header.stamp);
+        transform = robot_state_handle_.lookupTransform(joint_urdfs_.at(2)->child_link_name,
+                                                        data_track_.header.frame_id, data_track_.header.stamp);
         tf2::doTransform(target_pos, target_pos, transform);
-        tf2::doTransform(target_vel, target_vel, transform);
+        //        tf2::doTransform(target_vel, target_vel, transform);
         tf2::fromMsg(target_pos, target_pos_tf);
         tf2::fromMsg(target_vel, target_vel_tf);
         vel_des[2] = target_pos_tf.cross(target_vel_tf).z() / std::pow((target_pos_tf.length()), 2);
       }
       if (joint_urdfs_.find(1) != joint_urdfs_.end())
       {
-        transform = robot_state_handle_.lookupTransform(joint_urdfs_.at(1)->parent_link_name,
+        transform = robot_state_handle_.lookupTransform(joint_urdfs_.at(1)->child_link_name,
                                                         data_track_.header.frame_id, data_track_.header.stamp);
         tf2::doTransform(target_pos, target_pos, transform);
-        tf2::doTransform(target_vel, target_vel, transform);
+        //        tf2::doTransform(target_vel, target_vel, transform);
         tf2::fromMsg(target_pos, target_pos_tf);
         tf2::fromMsg(target_vel, target_vel_tf);
         vel_des[1] = target_pos_tf.cross(target_vel_tf).y() / std::pow((target_pos_tf.length()), 2);
