@@ -452,7 +452,7 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
         transform = robot_state_handle_.lookupTransform(joint_urdfs_.at(2)->child_link_name,
                                                         data_track_.header.frame_id, data_track_.header.stamp);
         tf2::doTransform(target_pos, target_pos, transform);
-        //        tf2::doTransform(target_vel, target_vel, transform);
+        tf2::doTransform(target_vel, target_vel, transform);
         tf2::fromMsg(target_pos, target_pos_tf);
         tf2::fromMsg(target_vel, target_vel_tf);
         vel_des[2] = target_pos_tf.cross(target_vel_tf).z() / std::pow((target_pos_tf.length()), 2);
@@ -462,7 +462,7 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
         transform = robot_state_handle_.lookupTransform(joint_urdfs_.at(1)->child_link_name,
                                                         data_track_.header.frame_id, data_track_.header.stamp);
         tf2::doTransform(target_pos, target_pos, transform);
-        //        tf2::doTransform(target_vel, target_vel, transform);
+        tf2::doTransform(target_vel, target_vel, transform);
         tf2::fromMsg(target_pos, target_pos_tf);
         tf2::fromMsg(target_vel, target_vel_tf);
         vel_des[1] = target_pos_tf.cross(target_vel_tf).y() / std::pow((target_pos_tf.length()), 2);
