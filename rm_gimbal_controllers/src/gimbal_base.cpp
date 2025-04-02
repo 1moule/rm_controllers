@@ -148,6 +148,7 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
 
   cmd_gimbal_sub_ = controller_nh.subscribe<rm_msgs::GimbalCmd>("command", 1, &Controller::commandCB, this);
   data_track_sub_ = controller_nh.subscribe<rm_msgs::TrackData>("/track", 1, &Controller::trackCB, this);
+  odom_sub_ = controller_nh.subscribe<nav_msgs::Odometry>("/odom", 1, &Controller::odomCB, this);
   publish_rate_ = getParam(controller_nh, "publish_rate", 100.);
   error_pub_.reset(new realtime_tools::RealtimePublisher<rm_msgs::GimbalDesError>(controller_nh, "error", 100));
 
@@ -165,11 +166,13 @@ void Controller::update(const ros::Time& time, const ros::Duration& period)
 {
   cmd_gimbal_ = *cmd_rt_buffer_.readFromRT();
   data_track_ = *track_rt_buffer_.readFromNonRT();
+  data_odom_ = *odom_rt_buffer_.readFromNonRT();
   config_ = *config_rt_buffer_.readFromRT();
   try
   {
     odom2gimbal_ = robot_state_handle_.lookupTransform("odom", odom2gimbal_.child_frame_id, time);
     odom2base_ = robot_state_handle_.lookupTransform("odom", odom2base_.child_frame_id, time);
+    tf2::doTransform(data_odom_.twist.twist.linear, data_odom_.twist.twist.linear, odom2base_);
   }
   catch (tf2::TransformException& ex)
   {
@@ -272,9 +275,9 @@ void Controller::track(const ros::Time& time)
   target_pos.x += target_vel.x * (time - data_track_.header.stamp).toSec() - odom2gimbal_.transform.translation.x;
   target_pos.y += target_vel.y * (time - data_track_.header.stamp).toSec() - odom2gimbal_.transform.translation.y;
   target_pos.z += target_vel.z * (time - data_track_.header.stamp).toSec() - odom2gimbal_.transform.translation.z;
-  target_vel.x -= chassis_vel_->linear_->x();
-  target_vel.y -= chassis_vel_->linear_->y();
-  target_vel.z -= chassis_vel_->linear_->z();
+  target_vel.x -= data_odom_.twist.twist.linear.x;
+  target_vel.y -= data_odom_.twist.twist.linear.y;
+  target_vel.z -= data_odom_.twist.twist.linear.z;
   bool solve_success = bullet_solver_->solve(target_pos, target_vel, cmd_gimbal_.bullet_speed, yaw, data_track_.v_yaw,
                                              data_track_.radius_1, data_track_.radius_2, data_track_.dz,
                                              data_track_.armors_num, chassis_vel_->angular_->z());
@@ -436,9 +439,9 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
     bullet_solver_->getSelectedArmorPosAndVel(target_pos, target_vel, data_track_.position, data_track_.velocity,
                                               data_track_.yaw, data_track_.v_yaw, data_track_.radius_1,
                                               data_track_.radius_2, data_track_.dz, data_track_.armors_num);
-    target_vel.x -= chassis_vel_->linear_->x();
-    target_vel.y -= chassis_vel_->linear_->y();
-    target_vel.z -= chassis_vel_->linear_->z();
+    target_vel.x -= data_odom_.twist.twist.linear.x;
+    target_vel.y -= data_odom_.twist.twist.linear.y;
+    target_vel.z -= data_odom_.twist.twist.linear.z;
     tf2::Vector3 target_pos_tf, target_vel_tf;
     try
     {
@@ -499,10 +502,10 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
       {
         pub.second->msg_.header.stamp = time;
         pub.second->msg_.set_point = pos_des[pub.first];
-        pub.second->msg_.set_point_dot = vel_des[pub.first];
+        pub.second->msg_.set_point_dot = data_odom_.twist.twist.linear.x;
         pub.second->msg_.process_value = pos_real[pub.first];
         pub.second->msg_.error = angle_error[pub.first];
-        pub.second->msg_.command = pid_pos_.at(pub.first)->getCurrentCmd();
+        pub.second->msg_.command = data_odom_.twist.twist.linear.y;
         pub.second->unlockAndPublish();
       }
     }
@@ -592,6 +595,11 @@ void Controller::trackCB(const rm_msgs::TrackDataConstPtr& msg)
   if (msg->id == 0)
     return;
   track_rt_buffer_.writeFromNonRT(*msg);
+}
+
+void Controller::odomCB(const nav_msgs::OdometryConstPtr& msg)
+{
+  odom_rt_buffer_.writeFromNonRT(*msg);
 }
 
 void Controller::reconfigCB(rm_gimbal_controllers::GimbalBaseConfig& config, uint32_t /*unused*/)
