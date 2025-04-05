@@ -43,6 +43,7 @@
 #include <hardware_interface/joint_command_interface.h>
 #include <rm_common/hardware_interface/robot_state_interface.h>
 #include <rm_common/ros_utilities.h>
+#include <rm_common/filters/lp_filter.h>
 #include <realtime_tools/realtime_publisher.h>
 #include <dynamic_reconfigure/server.h>
 #include <rm_shooter_controllers/ShooterConfig.h>
@@ -87,6 +88,7 @@ private:
 
   hardware_interface::EffortJointInterface* effort_joint_interface_{};
   std::vector<std::vector<effort_controllers::JointVelocityController*>> ctrls_friction_;
+  std::vector<std::vector<LowPassFilter*>> lps_;
   effort_controllers::JointPositionController ctrl_trigger_;
   std::vector<std::vector<double>> wheel_speed_offsets_;
   int push_per_rotation_{}, count_{};
@@ -117,6 +119,7 @@ private:
   std::shared_ptr<realtime_tools::RealtimePublisher<rm_msgs::LocalHeatState>> local_heat_state_pub_;
   std::shared_ptr<realtime_tools::RealtimePublisher<rm_msgs::ShootState>> shoot_state_pub_;
   ros::Subscriber cmd_subscriber_;
+  ros::Publisher test_;
   dynamic_reconfigure::Server<rm_shooter_controllers::ShooterConfig>* d_srv_{};
 };
 

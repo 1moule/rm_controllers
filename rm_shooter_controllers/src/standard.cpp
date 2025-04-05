@@ -83,20 +83,27 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
   {
     std::vector<double> wheel_speed_offset_temp;
     std::vector<effort_controllers::JointVelocityController*> ctrl_frictions;
+    std::vector<LowPassFilter*> lps;
     for (const auto& it : its.second)
     {
       ros::NodeHandle nh = ros::NodeHandle(controller_nh, "friction/" + its.first + "/" + it.first);
       wheel_speed_offset_temp.push_back(nh.getParam("wheel_speed_offset", wheel_speed_offset) ? wheel_speed_offset : 0.);
       effort_controllers::JointVelocityController* ctrl_friction = new effort_controllers::JointVelocityController;
+      LowPassFilter* lp = new LowPassFilter(nh);
       if (ctrl_friction->init(effort_joint_interface_, nh))
+      {
         ctrl_frictions.push_back(ctrl_friction);
+        lps.push_back(lp);
+      }
       else
         return false;
     }
     ctrls_friction_.push_back(ctrl_frictions);
+    lps_.push_back(lps);
     wheel_speed_offsets_.push_back(wheel_speed_offset_temp);
   }
   ros::NodeHandle nh_trigger = ros::NodeHandle(controller_nh, "trigger");
+  test_ = controller_nh.advertise<rm_msgs::LocalHeatState>("test", 1);
   return ctrl_trigger_.init(effort_joint_interface_, nh_trigger);
 }
 
@@ -148,13 +155,18 @@ void Controller::update(const ros::Time& time, const ros::Duration& period)
     shoot_state_pub_->msg_.state = state_;
     shoot_state_pub_->unlockAndPublish();
   }
-  for (auto& ctrl_frictions : ctrls_friction_)
+  for (size_t i = 0; i < ctrls_friction_.size(); i++)
   {
-    for (auto& ctrl_friction : ctrl_frictions)
+    for (size_t j = 0; j < ctrls_friction_[i].size(); j++)
     {
-      ctrl_friction->update(time, period);
+      ctrls_friction_[i][j]->update(time, period);
+      lps_[i][j]->input(ctrls_friction_[i][j]->joint_.getCommand());
+      ctrls_friction_[i][j]->joint_.setCommand(lps_[i][j]->output());
     }
   }
+  rm_msgs::LocalHeatState msg;
+  msg.friction_change_vel = lps_[0][0]->output();
+  test_.publish(msg);
   ctrl_trigger_.update(time, period);
 }
 
