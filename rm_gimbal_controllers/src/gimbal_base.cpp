@@ -229,15 +229,13 @@ void Controller::rate(const ros::Time& time, const ros::Duration& period)
       for (auto& td : tracking_differentiator_)
         td.second->clear(des[td.first]);
       start_ = false;
-      previous_output_ = 0.;
     }
   }
   else
   {
     double des[3]{ 0. };
     quatToRPY(odom2gimbal_des_.transform.rotation, des[0], des[1], des[2]);
-    previous_output_ = FirstOrderLag(cmd_gimbal_.rate_yaw, previous_output_, 0.02, 0.001);
-    setDes(time, des[2] + period.toSec() * previous_output_, des[1] + period.toSec() * cmd_gimbal_.rate_pitch);
+    setDes(time, des[2] + period.toSec() * cmd_gimbal_.rate_yaw, des[1] + period.toSec() * cmd_gimbal_.rate_pitch);
   }
 }
 
@@ -449,7 +447,7 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
     angle_error[i] = angles::shortest_angular_distance(pos_real[i], pos_des[i]);
   if (state_ == RATE)
   {
-    vel_des[2] = previous_output_;
+    vel_des[2] = cmd_gimbal_.rate_yaw;
     vel_des[1] = cmd_gimbal_.rate_pitch;
   }
   else if (state_ == TRACK)
