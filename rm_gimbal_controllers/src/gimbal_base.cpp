@@ -119,6 +119,8 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
         return false;
     }
   }
+  for (int i = 0; i < 3; i++)
+    ramps_.insert(std::make_pair(i, std::make_unique<RampFilter<double>>(0, 0.001)));
 
   robot_state_handle_ = robot_hw->get<rm_control::RobotStateInterface>()->getHandle("robot_state");
   if (!controller_nh.hasParam("imu_name"))
@@ -166,6 +168,8 @@ void Controller::update(const ros::Time& time, const ros::Duration& period)
   cmd_gimbal_ = *cmd_rt_buffer_.readFromRT();
   data_track_ = *track_rt_buffer_.readFromNonRT();
   config_ = *config_rt_buffer_.readFromRT();
+  for (auto& ramp : ramps_)
+    ramp.second->setAcc(config_.accel_yaw_);
   try
   {
     odom2gimbal_ = robot_state_handle_.lookupTransform("odom", odom2gimbal_.child_frame_id, time);
@@ -419,11 +423,26 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
     if (ctrls_.find(2) != ctrls_.end())
       angular_vel.z = ctrls_.at(2)->joint_.getVelocity();
   }
-  double pos_real[3]{ 0. }, pos_des[3]{ 0. }, vel_des[3]{ 0. }, angle_error[3]{ 0. };
+  double pos_real[3]{ 0. }, pos_des_temp[3]{ 0. }, pos_des[3]{ 0. }, vel_des[3]{ 0. }, angle_error[3]{ 0. };
   quatToRPY(odom2gimbal_des_.transform.rotation, pos_des[0], pos_des[1], pos_des[2]);
   quatToRPY(odom2gimbal_.transform.rotation, pos_real[0], pos_real[1], pos_real[2]);
   for (int i = 0; i < 3; i++)
-    angle_error[i] = angles::shortest_angular_distance(pos_real[i], pos_des[i]);
+  {
+    ramps_[i]->input(last_pos_des_[i] + angles::shortest_angular_distance(last_pos_des_[i], pos_des[i]));
+    last_pos_des_[i] += angles::shortest_angular_distance(last_pos_des_[i], pos_des[i]);
+    pos_des_temp[i] = ramps_[i]->output();
+    while (pos_des_temp[i] > M_PI)
+      pos_des_temp[i] -= 2 * M_PI;
+    while (pos_des_temp[i] < -M_PI)
+      pos_des_temp[i] += 2 * M_PI;
+  }
+  for (int i = 0; i < 3; i++)
+  {
+    if (state_ == RATE)
+      angle_error[i] = angles::shortest_angular_distance(pos_real[i], pos_des[i]);
+    else
+      angle_error[i] = angles::shortest_angular_distance(pos_real[i], pos_des_temp[i]);
+  }
   if (state_ == RATE)
   {
     vel_des[2] = cmd_gimbal_.rate_yaw;

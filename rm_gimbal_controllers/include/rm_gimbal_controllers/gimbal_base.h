@@ -160,9 +160,11 @@ private:
   hardware_interface::ImuSensorHandle imu_sensor_handle_;
   std::unordered_map<int, std::unique_ptr<effort_controllers::JointVelocityController>> ctrls_;
   std::unordered_map<int, std::unique_ptr<control_toolbox::Pid>> pid_pos_;
+  std::unordered_map<int, std::unique_ptr<RampFilter<double>>> ramps_;
   std::unordered_map<int, urdf::JointConstSharedPtr> joint_urdfs_;
   std::unordered_map<int, bool> pos_des_in_limit_;
   bool has_imu_ = true;
+  double last_pos_des_[3]{};
 
   std::shared_ptr<BulletSolver> bullet_solver_;
 
