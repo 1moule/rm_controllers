@@ -45,6 +45,8 @@ BulletSolver::BulletSolver(ros::NodeHandle& controller_nh)
   target_selector_ = std::make_unique<TargetSelector>();
   state_pub_ = std::make_unique<realtime_tools::RealtimePublisher<rm_msgs::BulletSolverState>>(
       controller_nh, "bullet_solver_state", 10.);
+  shoot_beforehand_cmd_pub_ = std::make_unique<realtime_tools::RealtimePublisher<rm_msgs::ShootBeforehandCmd>>(
+      controller_nh, "shoot_beforehand_cmd", 10);
 }
 
 void BulletSolver::selectTarget(geometry_msgs::Point pos, geometry_msgs::Vector3 vel, double bullet_speed, double yaw,
