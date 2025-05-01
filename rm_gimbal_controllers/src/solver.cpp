@@ -66,15 +66,11 @@ void BulletSolver::selectTarget(geometry_msgs::Point pos, geometry_msgs::Vector3
   if (target_armor_ == LEFT || target_armor_ == RIGHT)
     pos.z += dz;
   if (std::abs(v_yaw) < config_.max_track_target_vel)
-  {
     track_target_ = true;
-    tracked_target_kinematic_->reset(pos, vel, yaw, v_yaw, r);
-  }
   else
-  {
     track_target_ = false;
-    untracked_target_kinematic_->reset(pos, vel, yaw, v_yaw, r);
-  }
+  tracked_target_kinematic_->reset(pos, vel, yaw, v_yaw, r);
+  untracked_target_kinematic_->reset(pos, vel, yaw, v_yaw, r);
 }
 
 bool BulletSolver::solve()
@@ -131,7 +127,7 @@ double BulletSolver::getGimbalError(double yaw_real, double pitch_real)
   {
     double delay = config_.delay;
     geometry_msgs::Point target_pos_after_fly_time_and_delay{};
-    target_pos_after_fly_time_and_delay = untracked_target_kinematic_->position(fly_time_ + delay);
+    target_pos_after_fly_time_and_delay = tracked_target_kinematic_->position(fly_time_ + delay);
     error = std::sqrt(std::pow(target_pos_.x - target_pos_after_fly_time_and_delay.x, 2) +
                       std::pow(target_pos_.y - target_pos_after_fly_time_and_delay.y, 2) +
                       std::pow(target_pos_.z - target_pos_after_fly_time_and_delay.z, 2));
