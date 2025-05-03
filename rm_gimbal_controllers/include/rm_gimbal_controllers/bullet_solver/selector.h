@@ -77,10 +77,8 @@ public:
         {
           double next_angle_distance = acos(r2_ / target_rho) - min_switch_angle;
           double next_max_switch_angle = min_switch_angle + 0.3 * next_angle_distance;
-          double next_switch_armor_angle = v_yaw_ < max_track_target_vel_ ?
-                                               (next_max_switch_angle + ((-next_max_switch_angle + min_switch_angle) *
-                                                                         std::abs(v_yaw_) / max_track_target_vel_)) :
-                                               min_switch_angle;
+          double next_switch_armor_angle = (next_max_switch_angle + ((-next_max_switch_angle + min_switch_angle) *
+                                                                     std::abs(v_yaw_) / max_track_target_vel_));
           if (((((yaw_ - (M_PI * 2 / armors_num_) + v_yaw_ * rough_fly_time) > output_yaw + next_switch_armor_angle) &&
                 v_yaw_ > 0.) ||
                (((yaw_ + (M_PI * 2 / armors_num_) + v_yaw_ * rough_fly_time) < output_yaw - next_switch_armor_angle) &&
