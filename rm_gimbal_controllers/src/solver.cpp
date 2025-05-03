@@ -173,6 +173,7 @@ void BulletSolver::publishState()
     state_pub_->msg_.fly_time = fly_time_;
     state_pub_->msg_.target_armor = target_armor_;
     state_pub_->msg_.switch_armor_state = current_switch_state_;
+    state_pub_->msg_.track_target = track_target_;
     state_pub_->unlockAndPublish();
   }
 }
