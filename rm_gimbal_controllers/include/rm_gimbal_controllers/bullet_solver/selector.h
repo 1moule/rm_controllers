@@ -26,7 +26,8 @@ class TargetSelector
 public:
   TargetSelector() = default;
   void reset(geometry_msgs::Point pos, geometry_msgs::Vector3 vel, double yaw, double v_yaw, double r1, double r2,
-             double bullet_speed, double resistance_coff, double max_track_target_vel, double delay, int armors_num)
+             double bullet_speed, double resistance_coff, double max_track_target_vel, double delay, int armors_num,
+             bool track_target)
   {
     pos_ = pos;
     vel_ = vel;
@@ -39,6 +40,7 @@ public:
     bullet_speed_ = bullet_speed;
     resistance_coff_ = resistance_coff;
     max_track_target_vel_ = max_track_target_vel;
+    track_target_ = track_target;
   }
   int getTargetArmor()
   {
@@ -51,10 +53,10 @@ public:
     double angle_distance = acos(r1_ / target_rho) - min_switch_angle;
     double max_switch_angle = min_switch_angle + 0.3 * angle_distance;
     double switch_armor_angle =
-        v_yaw_ < max_track_target_vel_ ?
+        track_target_ ?
             (max_switch_angle + ((-max_switch_angle + min_switch_angle) * std::abs(v_yaw_) / max_track_target_vel_)) :
             min_switch_angle;
-    if (v_yaw_ < max_track_target_vel_)
+    if (track_target_)
     {
       int offset = (target_armor_ == BACK && v_yaw_ > 0.) ? -4 : 0;
       if (((((yaw_ + (M_PI * 2 / armors_num_) * (target_armor_ + offset - 1) + v_yaw_ * (rough_fly_time + delay_)) >
@@ -139,5 +141,6 @@ private:
   int switch_armor_state_{ 0 };
   int count_{ 0 };
   int armors_num_{};
+  bool track_target_{};
 };
 }  // namespace rm_gimbal_controllers

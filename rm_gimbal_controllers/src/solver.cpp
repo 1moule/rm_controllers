@@ -55,8 +55,12 @@ void BulletSolver::selectTarget(geometry_msgs::Point pos, geometry_msgs::Vector3
   config_ = *config_rt_buffer_.readFromRT();
   bullet_speed_ = bullet_speed;
   resistance_coff_ = getResistanceCoefficient(bullet_speed_) != 0 ? getResistanceCoefficient(bullet_speed_) : 0.001;
+  if (!track_target_ && (std::abs(v_yaw) < config_.max_track_target_vel - 1.))
+    track_target_ = true;
+  if (track_target_ && (std::abs(v_yaw) > config_.max_track_target_vel + 1.))
+    track_target_ = false;
   target_selector_->reset(pos, vel, yaw, v_yaw, r1, r2, bullet_speed, resistance_coff_, config_.max_track_target_vel,
-                          config_.delay, armors_num);
+                          config_.delay, armors_num, track_target_);
   target_armor_ = target_selector_->getTargetArmor();
   current_switch_state_ = target_selector_->getSwitchArmorState();
   if (current_switch_state_ == START_SWITCH)
@@ -66,10 +70,6 @@ void BulletSolver::selectTarget(geometry_msgs::Point pos, geometry_msgs::Vector3
   yaw += (M_PI * 2 / armors_num) * (target_armor_ + offset - 1);
   if (target_armor_ == LEFT || target_armor_ == RIGHT)
     pos.z += dz;
-  if (std::abs(v_yaw) < config_.max_track_target_vel)
-    track_target_ = true;
-  else
-    track_target_ = false;
   tracked_target_kinematic_->reset(pos, vel, yaw, v_yaw, r);
   untracked_target_kinematic_->reset(pos, vel, yaw, v_yaw, r);
 }
