@@ -62,7 +62,8 @@ void BulletSolver::selectTarget(geometry_msgs::Point pos, geometry_msgs::Vector3
   if (current_switch_state_ == START_SWITCH)
     switch_armor_time_ = ros::Time::now();
   double r = (target_armor_ == FRONT || target_armor_ == BACK) ? r1 : r2;
-  yaw += (M_PI * 2 / armors_num) * (target_armor_ - 1);
+  int offset = (target_armor_ == BACK && v_yaw > 0.) ? -4 : 0;
+  yaw += (M_PI * 2 / armors_num) * (target_armor_ + offset - 1);
   if (target_armor_ == LEFT || target_armor_ == RIGHT)
     pos.z += dz;
   if (std::abs(v_yaw) < config_.max_track_target_vel)
