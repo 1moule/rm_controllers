@@ -72,8 +72,8 @@ public:
            (((yaw_ + v_yaw_ * rough_fly_time) < output_yaw - switch_armor_angle) && v_yaw_ < 0.)) &&
           std::abs(v_yaw_) >= 1.0)
       {
-        count_++;
-        if (count_ > 8)
+        switch_count_++;
+        if (switch_count_ > 5)
         {
           double next_angle_distance = acos(r2_ / target_rho) - min_switch_angle;
           double next_max_switch_angle = min_switch_angle + 0.3 * next_angle_distance;
@@ -84,7 +84,11 @@ public:
                (((yaw_ + (M_PI * 2 / armors_num_) + v_yaw_ * rough_fly_time) < output_yaw - next_switch_armor_angle) &&
                 v_yaw_ < 0.)) &&
               std::abs(v_yaw_) >= 1.0)
-            target_armor_ = BACK;
+          {
+            next_switch_count_++;
+            if (next_switch_count_ > 5)
+              target_armor_ = BACK;
+          }
           else
             target_armor_ = v_yaw_ > 0. ? LEFT : RIGHT;
         }
@@ -120,7 +124,10 @@ public:
       switch_armor_state_ = NO_SWITCH;
     if (((current_armor_ == LEFT || current_armor_ == RIGHT) && target_armor_ == FRONT) ||
         (current_armor_ == BACK && (target_armor_ == LEFT || target_armor_ == RIGHT)))
-      count_ = 0;
+    {
+      switch_count_ = 0;
+      next_switch_count_ = 0;
+    }
     current_armor_ = target_armor_;
     return target_armor_;
   }
@@ -137,7 +144,7 @@ private:
   double delay_{}, bullet_speed_{}, resistance_coff_{}, max_track_target_vel_{};
   int current_armor_{ 1 }, target_armor_{ 1 };
   int switch_armor_state_{ 0 };
-  int count_{ 0 };
+  int switch_count_{ 0 }, next_switch_count_{ 0 };
   int armors_num_{};
   bool track_target_{};
 };
