@@ -167,7 +167,7 @@ void BulletSolver::publishState()
 
 void BulletSolver::judgeShootBeforehand(const ros::Time& time, double v_yaw)
 {
-  int shoot_beforehand_cmd{};
+  int shoot_beforehand_cmd;
   if (!track_target_)
     shoot_beforehand_cmd = rm_msgs::ShootBeforehandCmd::JUDGE_BY_ERROR;
   else if (current_switch_state_ == READY_SWITCH)
