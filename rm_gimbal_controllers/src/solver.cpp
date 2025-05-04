@@ -15,19 +15,13 @@ BulletSolver::BulletSolver(ros::NodeHandle& controller_nh)
               .resistance_coff_qd_30 = getParam(controller_nh, "resistance_coff_qd_30", 0.),
               .g = getParam(controller_nh, "g", 0.),
               .delay = getParam(controller_nh, "delay", 0.),
-              .wait_next_armor_delay = getParam(controller_nh, "wait_next_armor_delay", 0.105),
-              .wait_diagonal_armor_delay = getParam(controller_nh, "wait_diagonal_armor_delay", 0.105),
               .dt = getParam(controller_nh, "dt", 0.),
               .timeout = getParam(controller_nh, "timeout", 0.),
-              .ban_shoot_duration = getParam(controller_nh, "ban_shoot_duration", 0.0),
-              .max_switch_angle = getParam(controller_nh, "max_switch_angle", 40.0),
               .min_switch_angle = getParam(controller_nh, "min_switch_angle", 2.0),
-              .min_shoot_beforehand_vel = getParam(controller_nh, "min_shoot_beforehand_vel", 4.5),
-              .max_chassis_angular_vel = getParam(controller_nh, "max_chassis_angular_vel", 8.5),
               .max_track_target_vel = getParam(controller_nh, "max_track_target_vel", 10.0),
               .track_rotate_target_delay = getParam(controller_nh, "track_rotate_target_delay", 0.),
               .track_move_target_delay = getParam(controller_nh, "track_move_target_delay", 0.),
-              .min_fit_switch_count = getParam(controller_nh, "min_fit_switch_count", 3) };
+              .min_switch_count = getParam(controller_nh, "min_switch_count", 3) };
   config_rt_buffer_.initRT(config_);
   XmlRpc::XmlRpcValue xml_rpc_value;
   if (!controller_nh.getParam("gimbal_switch_duration", xml_rpc_value))
@@ -214,19 +208,13 @@ void BulletSolver::reconfigCB(rm_gimbal_controllers::BulletSolverConfig& config,
     config.resistance_coff_qd_30 = init_config.resistance_coff_qd_30;
     config.g = init_config.g;
     config.delay = init_config.delay;
-    config.wait_next_armor_delay = init_config.wait_next_armor_delay;
-    config.wait_diagonal_armor_delay = init_config.wait_diagonal_armor_delay;
     config.dt = init_config.dt;
     config.timeout = init_config.timeout;
-    config.ban_shoot_duration = init_config.ban_shoot_duration;
-    config.max_switch_angle = init_config.max_switch_angle;
     config.min_switch_angle = init_config.min_switch_angle;
-    config.min_shoot_beforehand_vel = init_config.min_shoot_beforehand_vel;
-    config.max_chassis_angular_vel = init_config.max_chassis_angular_vel;
     config.max_track_target_vel = init_config.max_track_target_vel;
     config.track_rotate_target_delay = init_config.track_rotate_target_delay;
     config.track_move_target_delay = init_config.track_move_target_delay;
-    config.min_fit_switch_count = init_config.min_fit_switch_count;
+    config.min_switch_count = init_config.min_switch_count;
     dynamic_reconfig_initialized_ = true;
   }
   Config config_non_rt{ .resistance_coff_qd_10 = config.resistance_coff_qd_10,
@@ -236,19 +224,13 @@ void BulletSolver::reconfigCB(rm_gimbal_controllers::BulletSolverConfig& config,
                         .resistance_coff_qd_30 = config.resistance_coff_qd_30,
                         .g = config.g,
                         .delay = config.delay,
-                        .wait_next_armor_delay = config.wait_next_armor_delay,
-                        .wait_diagonal_armor_delay = config.wait_diagonal_armor_delay,
                         .dt = config.dt,
                         .timeout = config.timeout,
-                        .ban_shoot_duration = config.ban_shoot_duration,
-                        .max_switch_angle = config.max_switch_angle,
                         .min_switch_angle = config.min_switch_angle,
-                        .min_shoot_beforehand_vel = config.min_shoot_beforehand_vel,
-                        .max_chassis_angular_vel = config.max_chassis_angular_vel,
                         .max_track_target_vel = config.max_track_target_vel,
                         .track_rotate_target_delay = config.track_rotate_target_delay,
                         .track_move_target_delay = config.track_move_target_delay,
-                        .min_fit_switch_count = config.min_fit_switch_count };
+                        .min_switch_count = config.min_switch_count };
   config_rt_buffer_.writeFromNonRT(config_non_rt);
 }
 }  // namespace rm_gimbal_controllers
