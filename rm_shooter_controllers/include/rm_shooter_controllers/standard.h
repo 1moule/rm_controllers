@@ -89,12 +89,16 @@ private:
   std::vector<std::vector<effort_controllers::JointVelocityController*>> ctrls_friction_;
   effort_controllers::JointPositionController ctrl_trigger_;
   std::vector<std::vector<double>> wheel_speed_offsets_;
+  std::vector<std::vector<double>> wheel_speed_directions_;
   int push_per_rotation_{}, count_{};
   double push_wheel_speed_threshold_{};
   double freq_threshold_{};
   bool dynamic_reconfig_initialized_ = false;
   bool state_changed_ = false;
+  bool enter_ready_ = false;
   bool maybe_block_ = false;
+  int friction_block_count = 0;
+  bool last_friction_wheel_block = false, friction_wheel_block = false;
   double friction_block_effort_{}, friction_block_vel_{};
   double anti_friction_block_duty_cycle_{}, anti_friction_block_vel_{};
   bool has_shoot_ = false, has_shoot_last_ = false;
