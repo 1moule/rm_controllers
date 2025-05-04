@@ -8,11 +8,8 @@ namespace rm_gimbal_controllers
 {
 BulletSolver::BulletSolver(ros::NodeHandle& controller_nh)
 {
-  config_ = { .resistance_coff_qd_10 = getParam(controller_nh, "resistance_coff_qd_10", 0.),
-              .resistance_coff_qd_15 = getParam(controller_nh, "resistance_coff_qd_15", 0.),
-              .resistance_coff_qd_16 = getParam(controller_nh, "resistance_coff_qd_16", 0.),
-              .resistance_coff_qd_18 = getParam(controller_nh, "resistance_coff_qd_18", 0.),
-              .resistance_coff_qd_30 = getParam(controller_nh, "resistance_coff_qd_30", 0.),
+  config_ = { .resistance_coff_qd_16 = getParam(controller_nh, "resistance_coff_qd_16", 0.),
+              .resistance_coff_qd_25 = getParam(controller_nh, "resistance_coff_qd_25", 0.),
               .g = getParam(controller_nh, "g", 0.),
               .delay = getParam(controller_nh, "delay", 0.),
               .dt = getParam(controller_nh, "dt", 0.),
@@ -147,18 +144,12 @@ void BulletSolver::getSelectedArmorPosAndVel(geometry_msgs::Point& armor_pos, ge
 
 double BulletSolver::getResistanceCoefficient(double bullet_speed) const
 {
-  // bullet_speed have 5 value:10,15,16,18,30
+  // bullet_speed have 2 value: 16, 30
   double resistance_coff;
-  if (bullet_speed < 12.5)
-    resistance_coff = config_.resistance_coff_qd_10;
-  else if (bullet_speed < 15.5)
-    resistance_coff = config_.resistance_coff_qd_15;
-  else if (bullet_speed < 17)
+  if (bullet_speed < 16)
     resistance_coff = config_.resistance_coff_qd_16;
-  else if (bullet_speed < 24)
-    resistance_coff = config_.resistance_coff_qd_18;
   else
-    resistance_coff = config_.resistance_coff_qd_30;
+    resistance_coff = config_.resistance_coff_qd_25;
   return resistance_coff;
 }
 
@@ -201,11 +192,8 @@ void BulletSolver::reconfigCB(rm_gimbal_controllers::BulletSolverConfig& config,
   if (!dynamic_reconfig_initialized_)
   {
     Config init_config = *config_rt_buffer_.readFromNonRT();  // config init use yaml
-    config.resistance_coff_qd_10 = init_config.resistance_coff_qd_10;
-    config.resistance_coff_qd_15 = init_config.resistance_coff_qd_15;
     config.resistance_coff_qd_16 = init_config.resistance_coff_qd_16;
-    config.resistance_coff_qd_18 = init_config.resistance_coff_qd_18;
-    config.resistance_coff_qd_30 = init_config.resistance_coff_qd_30;
+    config.resistance_coff_qd_25 = init_config.resistance_coff_qd_25;
     config.g = init_config.g;
     config.delay = init_config.delay;
     config.dt = init_config.dt;
@@ -217,11 +205,8 @@ void BulletSolver::reconfigCB(rm_gimbal_controllers::BulletSolverConfig& config,
     config.min_switch_count = init_config.min_switch_count;
     dynamic_reconfig_initialized_ = true;
   }
-  Config config_non_rt{ .resistance_coff_qd_10 = config.resistance_coff_qd_10,
-                        .resistance_coff_qd_15 = config.resistance_coff_qd_15,
-                        .resistance_coff_qd_16 = config.resistance_coff_qd_16,
-                        .resistance_coff_qd_18 = config.resistance_coff_qd_18,
-                        .resistance_coff_qd_30 = config.resistance_coff_qd_30,
+  Config config_non_rt{ .resistance_coff_qd_16 = config.resistance_coff_qd_16,
+                        .resistance_coff_qd_25 = config.resistance_coff_qd_25,
                         .g = config.g,
                         .delay = config.delay,
                         .dt = config.dt,

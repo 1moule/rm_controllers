@@ -19,8 +19,7 @@ namespace rm_gimbal_controllers
 {
 struct Config
 {
-  double resistance_coff_qd_10, resistance_coff_qd_15, resistance_coff_qd_16, resistance_coff_qd_18,
-      resistance_coff_qd_30, g, delay, dt, timeout;
+  double resistance_coff_qd_16, resistance_coff_qd_25, g, delay, dt, timeout;
   double min_switch_angle, max_track_target_vel, track_rotate_target_delay, track_move_target_delay;
   int min_switch_count;
 };
