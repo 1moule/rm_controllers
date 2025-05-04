@@ -54,8 +54,8 @@ void BulletSolver::selectTarget(geometry_msgs::Point pos, geometry_msgs::Vector3
   if (track_target_ && (std::abs(v_yaw) > config_.max_track_target_vel + 1.))
     track_target_ = false;
   target_selector_->setTargetState(pos, vel, yaw, v_yaw, r1, r2, armors_num);
-  target_selector_->configure(bullet_speed, resistance_coff_, config_.max_track_target_vel, config_.delay,
-                              track_target_);
+  target_selector_->configure(config_.delay, bullet_speed, resistance_coff_, config_.max_track_target_vel,
+                              config_.min_switch_angle, config_.min_switch_count, track_target_);
   target_armor_ = target_selector_->getTargetArmor();
   current_switch_state_ = target_selector_->getSwitchArmorState();
   if (current_switch_state_ == START_SWITCH)

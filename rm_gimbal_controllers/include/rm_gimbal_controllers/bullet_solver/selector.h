@@ -34,13 +34,15 @@ public:
     r2_ = r2;
     armors_num_ = armors_num;
   }
-  void configure(double bullet_speed, double resistance_coff, double max_track_target_vel, double delay,
-                 bool track_target)
+  void configure(double delay, double bullet_speed, double resistance_coff, double max_track_target_vel,
+                 double min_switch_angle, int min_switch_count, bool track_target)
   {
     delay_ = delay;
     bullet_speed_ = bullet_speed;
     resistance_coff_ = resistance_coff;
     max_track_target_vel_ = max_track_target_vel;
+    min_switch_angle_ = min_switch_angle;
+    min_switch_count_ = min_switch_count;
     track_target_ = track_target;
   }
   int getTargetArmor()
@@ -50,7 +52,7 @@ public:
     double output_pitch = std::atan2(pos_.z, std::sqrt(std::pow(pos_.x, 2) + std::pow(pos_.y, 2)));
     double rough_fly_time =
         (-std::log(1 - target_rho * resistance_coff_ / (bullet_speed_ * std::cos(output_pitch)))) / resistance_coff_;
-    double min_switch_angle = 2 / 180 * M_PI;
+    double min_switch_angle = min_switch_angle_ / 180 * M_PI;
     double angle_distance = acos(r1_ / target_rho) - min_switch_angle;
     double max_switch_angle = min_switch_angle + 0.3 * angle_distance;
     double switch_armor_angle =
@@ -74,7 +76,7 @@ public:
           std::abs(v_yaw_) >= 1.0)
       {
         switch_count_++;
-        if (switch_count_ > 5)
+        if (switch_count_ > min_switch_count_)
         {
           double next_angle_distance = acos(r2_ / target_rho) - min_switch_angle;
           double next_max_switch_angle = min_switch_angle + 0.3 * next_angle_distance;
@@ -87,7 +89,7 @@ public:
               std::abs(v_yaw_) >= 1.0)
           {
             next_switch_count_++;
-            if (next_switch_count_ > 5)
+            if (next_switch_count_ > min_switch_count_)
               target_armor_ = BACK;
           }
           else
@@ -143,11 +145,12 @@ private:
   geometry_msgs::Point pos_;
   geometry_msgs::Vector3 vel_;
   double yaw_{}, v_yaw_{}, r1_{}, r2_{};
-  double delay_{}, bullet_speed_{}, resistance_coff_{}, max_track_target_vel_{};
+  double delay_{}, bullet_speed_{}, resistance_coff_{}, max_track_target_vel_{}, min_switch_angle_{};
   int current_armor_{ 1 }, target_armor_{ 1 };
   int switch_armor_state_{ 0 };
   int switch_count_{ 0 }, next_switch_count_{ 0 };
   int armors_num_{ 4 };
+  int min_switch_count_{ 3 };
   bool track_target_{ true };
 };
 }  // namespace rm_gimbal_controllers
