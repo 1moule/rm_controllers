@@ -4,8 +4,6 @@
 
 #pragma once
 
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
-
 namespace rm_gimbal_controllers
 {
 enum Armor
@@ -25,9 +23,8 @@ class TargetSelector
 {
 public:
   TargetSelector() = default;
-  void reset(geometry_msgs::Point pos, geometry_msgs::Vector3 vel, double yaw, double v_yaw, double r1, double r2,
-             double bullet_speed, double resistance_coff, double max_track_target_vel, double delay, int armors_num,
-             bool track_target)
+  void setTargetState(geometry_msgs::Point pos, geometry_msgs::Vector3 vel, double yaw, double v_yaw, double r1,
+                      double r2, int armors_num)
   {
     pos_ = pos;
     vel_ = vel;
@@ -36,6 +33,10 @@ public:
     r1_ = r1;
     r2_ = r2;
     armors_num_ = armors_num;
+  }
+  void configure(double bullet_speed, double resistance_coff, double max_track_target_vel, double delay,
+                 bool track_target)
+  {
     delay_ = delay;
     bullet_speed_ = bullet_speed;
     resistance_coff_ = resistance_coff;
@@ -129,6 +130,7 @@ public:
       next_switch_count_ = 0;
     }
     current_armor_ = target_armor_;
+
     return target_armor_;
   }
 
@@ -145,7 +147,7 @@ private:
   int current_armor_{ 1 }, target_armor_{ 1 };
   int switch_armor_state_{ 0 };
   int switch_count_{ 0 }, next_switch_count_{ 0 };
-  int armors_num_{};
-  bool track_target_{};
+  int armors_num_{ 4 };
+  bool track_target_{ true };
 };
 }  // namespace rm_gimbal_controllers
