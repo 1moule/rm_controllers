@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+
 namespace rm_gimbal_controllers
 {
 enum Armor
