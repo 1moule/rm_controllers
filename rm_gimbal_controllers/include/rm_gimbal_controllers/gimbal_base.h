@@ -163,6 +163,7 @@ private:
   std::unordered_map<int, urdf::JointConstSharedPtr> joint_urdfs_;
   std::unordered_map<int, bool> pos_des_in_limit_;
   bool has_imu_ = true;
+  double last_pos_des_[3]{ 0. };
 
   std::shared_ptr<BulletSolver> bullet_solver_;
 
