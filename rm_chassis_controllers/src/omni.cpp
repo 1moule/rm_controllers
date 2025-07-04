@@ -19,6 +19,8 @@ bool OmniController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle
 
   XmlRpc::XmlRpcValue wheels;
   controller_nh.getParam("wheels", wheels);
+  controller_nh.getParam("k_v", k_v_);
+  ROS_INFO_STREAM(k_v_);
   chassis2joints_.resize(wheels.size(), 3);
 
   size_t i = 0;
@@ -48,18 +50,28 @@ bool OmniController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle
 
     i++;
   }
+  //  pubbb_ = controller_nh.advertise<std_msgs::Float64>("test", 1);
+
   return true;
 }
 
 void OmniController::moveJoint(const ros::Time& time, const ros::Duration& period)
 {
-  Eigen::Vector3d vel_chassis;
+  Eigen::Vector3d vel_chassis, acc_chassis;
   vel_chassis << vel_cmd_.z, vel_cmd_.x, vel_cmd_.y;
+  acc_chassis << (vel_cmd_.z - last_vel_cmd_.z) / period.toSec(), (vel_cmd_.x - last_vel_cmd_.x) / period.toSec(),
+      (vel_cmd_.y - last_vel_cmd_.y) / period.toSec();
+  //  std_msgs::Float64 data;
+  //  data.data = (vel_cmd_.z - last_vel_cmd_.z) / period.toSec();
+  //  pubbb_.publish(data);
   Eigen::VectorXd vel_joints = chassis2joints_ * vel_chassis;
+  Eigen::VectorXd acc_joints = chassis2joints_ * acc_chassis;
+  last_vel_cmd_ = vel_cmd_;
   for (size_t i = 0; i < joints_.size(); i++)
   {
     joints_[i]->setCommand(vel_joints(i));
     joints_[i]->update(time, period);
+    joints_[i]->joint_.setCommand(joints_[i]->joint_.getCommand() + k_v_ * acc_joints(i));
   }
 }
 
