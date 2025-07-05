@@ -22,9 +22,8 @@ private:
 
   std::vector<std::shared_ptr<effort_controllers::JointVelocityController>> joints_;
   Eigen::MatrixXd chassis2joints_;
-  geometry_msgs::Vector3 last_vel_cmd_{};
+  Eigen::VectorXd last_vel_joints{};
   double k_v_{};
-  //  ros::Publisher pubbb_;
 };
 
 }  // namespace rm_chassis_controllers

@@ -22,6 +22,7 @@ bool OmniController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle
   controller_nh.getParam("k_v", k_v_);
   ROS_INFO_STREAM(k_v_);
   chassis2joints_.resize(wheels.size(), 3);
+  last_vel_joints.resize(wheels.size());
 
   size_t i = 0;
   for (const auto& wheel : wheels)
@@ -41,6 +42,7 @@ bool OmniController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle
     in_chassis << -(double)wheel.second["pose"][1], 1., 0., (double)wheel.second["pose"][0], 0., 1.;
     Eigen::MatrixXd chassis2joint = 1. / (double)wheel.second["radius"] * direction * in_wheel * in_chassis;
     chassis2joints_.block<1, 3>(i, 0) = chassis2joint;
+    last_vel_joints(i) = 0.;
 
     ros::NodeHandle nh_wheel = ros::NodeHandle(controller_nh, "wheels/" + wheel.first);
     joints_.push_back(std::make_shared<effort_controllers::JointVelocityController>());
@@ -50,29 +52,22 @@ bool OmniController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle
 
     i++;
   }
-  //  pubbb_ = controller_nh.advertise<std_msgs::Float64>("test", 1);
-
   return true;
 }
 
 void OmniController::moveJoint(const ros::Time& time, const ros::Duration& period)
 {
-  Eigen::Vector3d vel_chassis, acc_chassis;
+  Eigen::Vector3d vel_chassis;
   vel_chassis << vel_cmd_.z, vel_cmd_.x, vel_cmd_.y;
-  acc_chassis << (vel_cmd_.z - last_vel_cmd_.z) / period.toSec(), (vel_cmd_.x - last_vel_cmd_.x) / period.toSec(),
-      (vel_cmd_.y - last_vel_cmd_.y) / period.toSec();
-  //  std_msgs::Float64 data;
-  //  data.data = (vel_cmd_.z - last_vel_cmd_.z) / period.toSec();
-  //  pubbb_.publish(data);
   Eigen::VectorXd vel_joints = chassis2joints_ * vel_chassis;
-  Eigen::VectorXd acc_joints = chassis2joints_ * acc_chassis;
-  last_vel_cmd_ = vel_cmd_;
   for (size_t i = 0; i < joints_.size(); i++)
   {
     joints_[i]->setCommand(vel_joints(i));
     joints_[i]->update(time, period);
-    joints_[i]->joint_.setCommand(joints_[i]->joint_.getCommand() + k_v_ * acc_joints(i));
+    joints_[i]->joint_.setCommand(joints_[i]->joint_.getCommand() +
+                                  (k_v_ * (vel_joints(i) - last_vel_joints(i)) / period.toSec()));
   }
+  last_vel_joints = vel_joints;
 }
 
 geometry_msgs::Twist OmniController::odometry()
