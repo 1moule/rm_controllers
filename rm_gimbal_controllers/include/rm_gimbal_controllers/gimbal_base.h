@@ -65,6 +65,7 @@ struct GimbalConfig
   double yaw_k_v, pitch_k_v, k_chassis_vel;
   double yaw_k_a, pitch_k_a;
   double accel_pitch, accel_yaw;
+  double chassis_comp_a_, chassis_comp_b_, chassis_comp_c_, chassis_comp_d_;
 };
 
 class ChassisVel
@@ -149,8 +150,9 @@ private:
   bool setDesIntoLimit(const tf2::Quaternion& base2gimbal_des, const urdf::JointConstSharedPtr& joint_urdf,
                        tf2::Quaternion& base2new_des);
   void moveJoint(const ros::Time& time, const ros::Duration& period);
-  double feedForward(const ros::Time& time);
   void updateChassisVel();
+  double feedForward(const ros::Time& time);
+  double updateCompensation(double chassis_vel_angular_z);
   void commandCB(const rm_msgs::GimbalCmdConstPtr& msg);
   void trackCB(const rm_msgs::TrackDataConstPtr& msg);
   void reconfigCB(rm_gimbal_controllers::GimbalBaseConfig& config, uint32_t);
@@ -194,6 +196,7 @@ private:
 
   // Chassis
   std::shared_ptr<ChassisVel> chassis_vel_;
+  double chassis_compensation_;
 
   bool dynamic_reconfig_initialized_{};
   GimbalConfig config_{};
