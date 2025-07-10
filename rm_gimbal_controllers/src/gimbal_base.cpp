@@ -493,14 +493,11 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
       ROS_WARN("%s", ex.what());
     }
   }
+  last_pos_des_[2] = pos_des[2];
   for (auto& td : tracking_differentiator_)
   {
-    td.second->update(last_pos_des_[td.first] +
-                          angles::shortest_angular_distance(last_pos_des_[td.first], pos_des[td.first]),
-                      vel_des[td.first]);
-    angle_error[td.first] =
-        angles::shortest_angular_distance(pos_real[td.first], std::remainder(td.second->getX1(), 2 * M_PI));
-    last_pos_des_[td.first] += angles::shortest_angular_distance(last_pos_des_[td.first], pos_des[td.first]);
+    td.second->update(pos_des[td.first], vel_des[td.first]);
+    angle_error[td.first] = angles::shortest_angular_distance(pos_real[td.first], td.second->getX1());
   }
   for (const auto& in_limit : pos_des_in_limit_)
     if (!in_limit.second)
@@ -535,7 +532,7 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
         pub.second->msg_.set_point_dot = vel_des[pub.first];
         pub.second->msg_.process_value = pos_real[pub.first];
         pub.second->msg_.error = angles::shortest_angular_distance(pos_real[pub.first], pos_des[pub.first]);
-        pub.second->msg_.command = std::remainder(tracking_differentiator_[pub.first]->getX1(), 2 * M_PI);
+        pub.second->msg_.command = tracking_differentiator_[pub.first]->getX1();
         pub.second->unlockAndPublish();
       }
     }
