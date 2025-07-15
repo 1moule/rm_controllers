@@ -120,9 +120,10 @@ bool BulletSolver::solve(geometry_msgs::Point pos, geometry_msgs::Vector3 vel, d
   if (identified_target_change_)
   {
     count_ = 0;
-    filtered_yaw_ = yaw;
     identified_target_change_ = false;
   }
+  if (abs(yaw - last_yaw_) > 1.)
+    filtered_yaw_ = yaw;
   else if (last_yaw_ != yaw)
   {
     filtered_yaw_ = filtered_yaw_ + (yaw - filtered_yaw_) * (0.001 / (0.01 + 0.001));
@@ -154,8 +155,8 @@ bool BulletSolver::solve(geometry_msgs::Point pos, geometry_msgs::Vector3 vel, d
                                       (2 * rough_fly_time + gimbal_switch_duration_.output(v_yaw)) / 2 * abs(v_yaw) +
                                       config_.switch_angle_offset :
                                   min_switch_angle;
-  if (((filtered_yaw_ > output_yaw_ + switch_armor_angle) && v_yaw > 1.) ||
-      ((filtered_yaw_ < output_yaw_ - switch_armor_angle) && v_yaw < -1.))
+  if ((std::remainder(filtered_yaw_ - output_yaw_, 2 * M_PI) > switch_armor_angle && v_yaw > 1.) ||
+      (std::remainder(filtered_yaw_ - output_yaw_, 2 * M_PI) < -switch_armor_angle && v_yaw < -1.))
   {
     count_++;
     if (count_ >= config_.min_fit_switch_count)
@@ -167,10 +168,11 @@ bool BulletSolver::solve(geometry_msgs::Point pos, geometry_msgs::Vector3 vel, d
       z = armors_num == 4 ? pos.z + dz : pos.z;
     }
   }
-  double filtered_aim_armor_yaw = filtered_yaw_ + selected_armor_ * 2 * M_PI / armors_num;
+  double filtered_aim_armor_yaw =
+      std::remainder(filtered_yaw_ + selected_armor_ * 2 * M_PI / armors_num - output_yaw_, 2 * M_PI);
   is_in_delay_before_switch_ =
-      ((((filtered_aim_armor_yaw + v_yaw * config_.delay) > output_yaw_ + switch_armor_angle) && v_yaw > 0.) ||
-       (((filtered_aim_armor_yaw + v_yaw * config_.delay) < output_yaw_ - switch_armor_angle) && v_yaw < 0.)) &&
+      (((filtered_aim_armor_yaw + v_yaw * config_.delay) > switch_armor_angle && v_yaw > 0.) ||
+       ((filtered_aim_armor_yaw + v_yaw * config_.delay) < -switch_armor_angle && v_yaw < 0.)) &&
       track_target_;
   if (track_target_)
     yaw += v_yaw * config_.track_rotate_target_delay;
