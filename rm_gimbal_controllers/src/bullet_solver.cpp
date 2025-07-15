@@ -57,7 +57,7 @@ BulletSolver::BulletSolver(ros::NodeHandle& controller_nh)
               .timeout = getParam(controller_nh, "timeout", 0.),
               .ban_shoot_duration = getParam(controller_nh, "ban_shoot_duration", 0.0),
               .gimbal_switch_duration = getParam(controller_nh, "gimbal_switch_duration", 0.0),
-              .max_switch_angle = getParam(controller_nh, "max_switch_angle", 40.0),
+              .switch_angle_offset = getParam(controller_nh, "switch_angle_offset", 0.0),
               .min_switch_angle = getParam(controller_nh, "min_switch_angle", 2.0),
               .min_shoot_beforehand_vel = getParam(controller_nh, "min_shoot_beforehand_vel", 4.5),
               .max_chassis_angular_vel = getParam(controller_nh, "max_chassis_angular_vel", 8.5),
@@ -157,7 +157,8 @@ bool BulletSolver::solve(geometry_msgs::Point pos, geometry_msgs::Vector3 vel, d
       track_target_ = true;
   }
   double switch_armor_angle =
-      track_target_ ? M_PI / armors_num - (2 * rough_fly_time + config_.gimbal_switch_duration) / 2 * abs(v_yaw) :
+      track_target_ ? M_PI / armors_num - (2 * rough_fly_time + config_.gimbal_switch_duration) / 2 * abs(v_yaw) +
+                          config_.switch_angle_offset :
                       min_switch_angle;
   if (((filtered_yaw_ > output_yaw_ + switch_armor_angle) && v_yaw > 1.) ||
       ((filtered_yaw_ < output_yaw_ - switch_armor_angle) && v_yaw < -1.))
@@ -430,7 +431,7 @@ void BulletSolver::reconfigCB(rm_gimbal_controllers::BulletSolverConfig& config,
     config.timeout = init_config.timeout;
     config.ban_shoot_duration = init_config.ban_shoot_duration;
     config.gimbal_switch_duration = init_config.gimbal_switch_duration;
-    config.max_switch_angle = init_config.max_switch_angle;
+    config.switch_angle_offset = init_config.switch_angle_offset;
     config.min_switch_angle = init_config.min_switch_angle;
     config.min_shoot_beforehand_vel = init_config.min_shoot_beforehand_vel;
     config.max_chassis_angular_vel = init_config.max_chassis_angular_vel;
@@ -452,7 +453,7 @@ void BulletSolver::reconfigCB(rm_gimbal_controllers::BulletSolverConfig& config,
                         .timeout = config.timeout,
                         .ban_shoot_duration = config.ban_shoot_duration,
                         .gimbal_switch_duration = config.gimbal_switch_duration,
-                        .max_switch_angle = config.max_switch_angle,
+                        .switch_angle_offset = config.switch_angle_offset,
                         .min_switch_angle = config.min_switch_angle,
                         .min_shoot_beforehand_vel = config.min_shoot_beforehand_vel,
                         .max_chassis_angular_vel = config.max_chassis_angular_vel,
