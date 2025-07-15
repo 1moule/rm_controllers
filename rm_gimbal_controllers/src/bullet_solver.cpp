@@ -52,7 +52,6 @@ BulletSolver::BulletSolver(ros::NodeHandle& controller_nh)
               .wait_diagonal_armor_delay = getParam(controller_nh, "wait_diagonal_armor_delay", 0.105),
               .dt = getParam(controller_nh, "dt", 0.),
               .timeout = getParam(controller_nh, "timeout", 0.),
-              .gimbal_switch_duration = getParam(controller_nh, "gimbal_switch_duration", 0.0),
               .switch_angle_offset = getParam(controller_nh, "switch_angle_offset", 0.0),
               .min_switch_angle = getParam(controller_nh, "min_switch_angle", 2.0),
               .min_shoot_beforehand_vel = getParam(controller_nh, "min_shoot_beforehand_vel", 4.5),
@@ -62,6 +61,11 @@ BulletSolver::BulletSolver(ros::NodeHandle& controller_nh)
   max_track_target_vel_ = getParam(controller_nh, "max_track_target_vel", 5.0);
   switch_hysteresis_ = getParam(controller_nh, "switch_hysteresis", 1.0);
   config_rt_buffer_.initRT(config_);
+  XmlRpc::XmlRpcValue xml_rpc_value;
+  if (!controller_nh.getParam("gimbal_switch_duration", xml_rpc_value))
+    ROS_ERROR("Gimbal switch duration no defined (namespace: %s)", controller_nh.getNamespace().c_str());
+  else
+    gimbal_switch_duration_.init(xml_rpc_value);
 
   marker_desire_.header.frame_id = "odom";
   marker_desire_.ns = "model";
@@ -145,10 +149,11 @@ bool BulletSolver::solve(geometry_msgs::Point pos, geometry_msgs::Vector3 vel, d
     if (std::abs(v_yaw) <= max_track_target_vel_ - switch_hysteresis_)
       track_target_ = true;
   }
-  double switch_armor_angle =
-      track_target_ ? M_PI / armors_num - (2 * rough_fly_time + config_.gimbal_switch_duration) / 2 * abs(v_yaw) +
-                          config_.switch_angle_offset :
-                      min_switch_angle;
+  double switch_armor_angle = track_target_ ?
+                                  M_PI / armors_num -
+                                      (2 * rough_fly_time + gimbal_switch_duration_.output(v_yaw)) / 2 * abs(v_yaw) +
+                                      config_.switch_angle_offset :
+                                  min_switch_angle;
   if (((filtered_yaw_ > output_yaw_ + switch_armor_angle) && v_yaw > 1.) ||
       ((filtered_yaw_ < output_yaw_ - switch_armor_angle) && v_yaw < -1.))
   {
@@ -384,9 +389,9 @@ void BulletSolver::judgeShootBeforehand(const ros::Time& time, double v_yaw)
 {
   if (!track_target_)
     shoot_beforehand_cmd_ = rm_msgs::ShootBeforehandCmd::JUDGE_BY_ERROR;
-  else if ((ros::Time::now() - switch_armor_time_).toSec() < config_.gimbal_switch_duration - config_.delay)
+  else if ((ros::Time::now() - switch_armor_time_).toSec() < gimbal_switch_duration_.output(v_yaw) - config_.delay)
     shoot_beforehand_cmd_ = rm_msgs::ShootBeforehandCmd::BAN_SHOOT;
-  else if (((ros::Time::now() - switch_armor_time_).toSec() < config_.gimbal_switch_duration) &&
+  else if (((ros::Time::now() - switch_armor_time_).toSec() < gimbal_switch_duration_.output(v_yaw)) &&
            std::abs(v_yaw) > config_.min_shoot_beforehand_vel)
     shoot_beforehand_cmd_ = rm_msgs::ShootBeforehandCmd::ALLOW_SHOOT;
   else if (is_in_delay_before_switch_)
@@ -415,7 +420,6 @@ void BulletSolver::reconfigCB(rm_gimbal_controllers::BulletSolverConfig& config,
     config.wait_diagonal_armor_delay = init_config.wait_diagonal_armor_delay;
     config.dt = init_config.dt;
     config.timeout = init_config.timeout;
-    config.gimbal_switch_duration = init_config.gimbal_switch_duration;
     config.switch_angle_offset = init_config.switch_angle_offset;
     config.min_switch_angle = init_config.min_switch_angle;
     config.min_shoot_beforehand_vel = init_config.min_shoot_beforehand_vel;
@@ -432,7 +436,6 @@ void BulletSolver::reconfigCB(rm_gimbal_controllers::BulletSolverConfig& config,
                         .wait_diagonal_armor_delay = config.wait_diagonal_armor_delay,
                         .dt = config.dt,
                         .timeout = config.timeout,
-                        .gimbal_switch_duration = config.gimbal_switch_duration,
                         .switch_angle_offset = config.switch_angle_offset,
                         .min_switch_angle = config.min_switch_angle,
                         .min_shoot_beforehand_vel = config.min_shoot_beforehand_vel,

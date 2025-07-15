@@ -46,6 +46,7 @@
 #include <rm_common/hardware_interface/robot_state_interface.h>
 #include <rm_common/eigen_types.h>
 #include <rm_common/ros_utilities.h>
+#include <rm_common/linear_interpolation.h>
 #include <std_msgs/Bool.h>
 #include <std_msgs/Float64.h>
 #include <rm_msgs/TrackData.h>
@@ -56,8 +57,8 @@ namespace rm_gimbal_controllers
 struct Config
 {
   double resistance_coff_qd_16, resistance_coff_qd_25, g, delay, wait_next_armor_delay, wait_diagonal_armor_delay, dt,
-      timeout, gimbal_switch_duration, switch_angle_offset, min_switch_angle, min_shoot_beforehand_vel,
-      track_rotate_target_delay, track_move_target_delay;
+      timeout, switch_angle_offset, min_switch_angle, min_shoot_beforehand_vel, track_rotate_target_delay,
+      track_move_target_delay;
   int min_fit_switch_count;
 };
 
@@ -95,6 +96,7 @@ private:
   std::shared_ptr<realtime_tools::RealtimePublisher<std_msgs::Float64>> fly_time_pub_;
   ros::Subscriber identified_target_change_sub_;
   ros::Time switch_armor_time_{};
+  rm_common::LinearInterp gimbal_switch_duration_;
   realtime_tools::RealtimeBuffer<Config> config_rt_buffer_;
   dynamic_reconfigure::Server<rm_gimbal_controllers::BulletSolverConfig>* d_srv_{};
   Config config_{};
