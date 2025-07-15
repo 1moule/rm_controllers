@@ -124,8 +124,12 @@ bool BulletSolver::solve(geometry_msgs::Point pos, geometry_msgs::Vector3 vel, d
   bullet_speed_ = bullet_speed;
   resistance_coff_ = getResistanceCoefficient(bullet_speed_) != 0 ? getResistanceCoefficient(bullet_speed_) : 0.001;
 
-  if (abs(yaw - last_yaw_) > 1.)
+  if (identified_target_change_)
+  {
+    count_ = 0;
     filtered_yaw_ = yaw;
+    identified_target_change_ = false;
+  }
   else if (last_yaw_ != yaw)
   {
     filtered_yaw_ = filtered_yaw_ + (yaw - filtered_yaw_) * (0.001 / (0.01 + 0.001));
@@ -159,11 +163,6 @@ bool BulletSolver::solve(geometry_msgs::Point pos, geometry_msgs::Vector3 vel, d
       ((filtered_yaw_ < output_yaw_ - switch_armor_angle) && v_yaw < -1.))
   {
     count_++;
-    if (identified_target_change_)
-    {
-      count_ = 0;
-      identified_target_change_ = false;
-    }
     if (count_ >= config_.min_fit_switch_count)
     {
       if (count_ == config_.min_fit_switch_count)
