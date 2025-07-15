@@ -44,23 +44,18 @@ namespace rm_gimbal_controllers
 {
 BulletSolver::BulletSolver(ros::NodeHandle& controller_nh)
 {
-  config_ = { .resistance_coff_qd_10 = getParam(controller_nh, "resistance_coff_qd_10", 0.),
-              .resistance_coff_qd_15 = getParam(controller_nh, "resistance_coff_qd_15", 0.),
-              .resistance_coff_qd_16 = getParam(controller_nh, "resistance_coff_qd_16", 0.),
-              .resistance_coff_qd_18 = getParam(controller_nh, "resistance_coff_qd_18", 0.),
-              .resistance_coff_qd_30 = getParam(controller_nh, "resistance_coff_qd_30", 0.),
+  config_ = { .resistance_coff_qd_16 = getParam(controller_nh, "resistance_coff_qd_16", 0.001),
+              .resistance_coff_qd_25 = getParam(controller_nh, "resistance_coff_qd_25", 0.001),
               .g = getParam(controller_nh, "g", 0.),
               .delay = getParam(controller_nh, "delay", 0.),
               .wait_next_armor_delay = getParam(controller_nh, "wait_next_armor_delay", 0.105),
               .wait_diagonal_armor_delay = getParam(controller_nh, "wait_diagonal_armor_delay", 0.105),
               .dt = getParam(controller_nh, "dt", 0.),
               .timeout = getParam(controller_nh, "timeout", 0.),
-              .ban_shoot_duration = getParam(controller_nh, "ban_shoot_duration", 0.0),
               .gimbal_switch_duration = getParam(controller_nh, "gimbal_switch_duration", 0.0),
               .switch_angle_offset = getParam(controller_nh, "switch_angle_offset", 0.0),
               .min_switch_angle = getParam(controller_nh, "min_switch_angle", 2.0),
               .min_shoot_beforehand_vel = getParam(controller_nh, "min_shoot_beforehand_vel", 4.5),
-              .max_chassis_angular_vel = getParam(controller_nh, "max_chassis_angular_vel", 8.5),
               .track_rotate_target_delay = getParam(controller_nh, "track_rotate_target_delay", 0.),
               .track_move_target_delay = getParam(controller_nh, "track_move_target_delay", 0.),
               .min_fit_switch_count = getParam(controller_nh, "min_fit_switch_count", 3) };
@@ -102,18 +97,12 @@ BulletSolver::BulletSolver(ros::NodeHandle& controller_nh)
 
 double BulletSolver::getResistanceCoefficient(double bullet_speed) const
 {
-  // bullet_speed have 5 value:10,15,16,18,30
+  // bullet_speed have 2 value:16,25
   double resistance_coff;
-  if (bullet_speed < 12.5)
-    resistance_coff = config_.resistance_coff_qd_10;
-  else if (bullet_speed < 15.5)
-    resistance_coff = config_.resistance_coff_qd_15;
-  else if (bullet_speed < 17)
+  if (bullet_speed < 17)
     resistance_coff = config_.resistance_coff_qd_16;
-  else if (bullet_speed < 24)
-    resistance_coff = config_.resistance_coff_qd_18;
   else
-    resistance_coff = config_.resistance_coff_qd_30;
+    resistance_coff = config_.resistance_coff_qd_25;
   return resistance_coff;
 }
 
@@ -418,45 +407,35 @@ void BulletSolver::reconfigCB(rm_gimbal_controllers::BulletSolverConfig& config,
   if (!dynamic_reconfig_initialized_)
   {
     Config init_config = *config_rt_buffer_.readFromNonRT();  // config init use yaml
-    config.resistance_coff_qd_10 = init_config.resistance_coff_qd_10;
-    config.resistance_coff_qd_15 = init_config.resistance_coff_qd_15;
     config.resistance_coff_qd_16 = init_config.resistance_coff_qd_16;
-    config.resistance_coff_qd_18 = init_config.resistance_coff_qd_18;
-    config.resistance_coff_qd_30 = init_config.resistance_coff_qd_30;
+    config.resistance_coff_qd_25 = init_config.resistance_coff_qd_25;
     config.g = init_config.g;
     config.delay = init_config.delay;
     config.wait_next_armor_delay = init_config.wait_next_armor_delay;
     config.wait_diagonal_armor_delay = init_config.wait_diagonal_armor_delay;
     config.dt = init_config.dt;
     config.timeout = init_config.timeout;
-    config.ban_shoot_duration = init_config.ban_shoot_duration;
     config.gimbal_switch_duration = init_config.gimbal_switch_duration;
     config.switch_angle_offset = init_config.switch_angle_offset;
     config.min_switch_angle = init_config.min_switch_angle;
     config.min_shoot_beforehand_vel = init_config.min_shoot_beforehand_vel;
-    config.max_chassis_angular_vel = init_config.max_chassis_angular_vel;
     config.track_rotate_target_delay = init_config.track_rotate_target_delay;
     config.track_move_target_delay = init_config.track_move_target_delay;
     config.min_fit_switch_count = init_config.min_fit_switch_count;
     dynamic_reconfig_initialized_ = true;
   }
-  Config config_non_rt{ .resistance_coff_qd_10 = config.resistance_coff_qd_10,
-                        .resistance_coff_qd_15 = config.resistance_coff_qd_15,
-                        .resistance_coff_qd_16 = config.resistance_coff_qd_16,
-                        .resistance_coff_qd_18 = config.resistance_coff_qd_18,
-                        .resistance_coff_qd_30 = config.resistance_coff_qd_30,
+  Config config_non_rt{ .resistance_coff_qd_16 = config.resistance_coff_qd_16,
+                        .resistance_coff_qd_25 = config.resistance_coff_qd_25,
                         .g = config.g,
                         .delay = config.delay,
                         .wait_next_armor_delay = config.wait_next_armor_delay,
                         .wait_diagonal_armor_delay = config.wait_diagonal_armor_delay,
                         .dt = config.dt,
                         .timeout = config.timeout,
-                        .ban_shoot_duration = config.ban_shoot_duration,
                         .gimbal_switch_duration = config.gimbal_switch_duration,
                         .switch_angle_offset = config.switch_angle_offset,
                         .min_switch_angle = config.min_switch_angle,
                         .min_shoot_beforehand_vel = config.min_shoot_beforehand_vel,
-                        .max_chassis_angular_vel = config.max_chassis_angular_vel,
                         .track_rotate_target_delay = config.track_rotate_target_delay,
                         .track_move_target_delay = config.track_move_target_delay,
                         .min_fit_switch_count = config.min_fit_switch_count };
