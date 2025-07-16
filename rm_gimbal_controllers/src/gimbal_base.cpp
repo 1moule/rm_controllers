@@ -69,10 +69,10 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
 
   config_ = { .yaw_k_v = getParam(controller_nh, "controllers/yaw/k_v", 0.),
               .pitch_k_v = getParam(controller_nh, "controllers/pitch/k_v", 0.),
-              .chassis_comp_a_ = getParam(controller_nh, "controllers/yaw/chassis_comp_a", 0.),
-              .chassis_comp_b_ = getParam(controller_nh, "controllers/yaw/chassis_comp_b", 0.),
-              .chassis_comp_c_ = getParam(controller_nh, "controllers/yaw/chassis_comp_c", 0.),
-              .chassis_comp_d_ = getParam(controller_nh, "controllers/yaw/chassis_comp_d", 0.) };
+              .chassis_comp_a = getParam(controller_nh, "controllers/yaw/chassis_comp_a", 0.),
+              .chassis_comp_b = getParam(controller_nh, "controllers/yaw/chassis_comp_b", 0.),
+              .chassis_comp_c = getParam(controller_nh, "controllers/yaw/chassis_comp_c", 0.),
+              .chassis_comp_d = getParam(controller_nh, "controllers/yaw/chassis_comp_d", 0.) };
   config_rt_buffer_.initRT(config_);
   d_srv_ = new dynamic_reconfigure::Server<rm_gimbal_controllers::GimbalBaseConfig>(controller_nh);
   dynamic_reconfigure::Server<rm_gimbal_controllers::GimbalBaseConfig>::CallbackType cb =
@@ -590,8 +590,8 @@ std::string Controller::getBaseFrameID(std::unordered_map<int, urdf::JointConstS
 double Controller::updateCompensation(double chassis_vel_angular_z)
 {
   chassis_compensation_ =
-      config_.chassis_comp_a_ * sin(config_.chassis_comp_b_ * chassis_vel_angular_z + config_.chassis_comp_c_) +
-      config_.chassis_comp_d_;
+      config_.chassis_comp_a * sin(config_.chassis_comp_b * chassis_vel_angular_z + config_.chassis_comp_c) +
+      config_.chassis_comp_d;
   return chassis_compensation_;
 }
 
@@ -615,19 +615,19 @@ void Controller::reconfigCB(rm_gimbal_controllers::GimbalBaseConfig& config, uin
     GimbalConfig init_config = *config_rt_buffer_.readFromNonRT();  // config init use yaml
     config.yaw_k_v = init_config.yaw_k_v;
     config.pitch_k_v = init_config.pitch_k_v;
-    config.chassis_comp_a_ = init_config.chassis_comp_a_;
-    config.chassis_comp_b_ = init_config.chassis_comp_b_;
-    config.chassis_comp_c_ = init_config.chassis_comp_c_;
-    config.chassis_comp_d_ = init_config.chassis_comp_d_;
+    config.chassis_comp_a = init_config.chassis_comp_a;
+    config.chassis_comp_b = init_config.chassis_comp_b;
+    config.chassis_comp_c = init_config.chassis_comp_c;
+    config.chassis_comp_d = init_config.chassis_comp_d;
 
     dynamic_reconfig_initialized_ = true;
   }
   GimbalConfig config_non_rt{ .yaw_k_v = config.yaw_k_v,
                               .pitch_k_v = config.pitch_k_v,
-                              .chassis_comp_a_ = config.chassis_comp_a_,
-                              .chassis_comp_b_ = config.chassis_comp_b_,
-                              .chassis_comp_c_ = config.chassis_comp_c_,
-                              .chassis_comp_d_ = config.chassis_comp_d_ };
+                              .chassis_comp_a = config.chassis_comp_a,
+                              .chassis_comp_b = config.chassis_comp_b,
+                              .chassis_comp_c = config.chassis_comp_c,
+                              .chassis_comp_d = config.chassis_comp_d };
   config_rt_buffer_.writeFromNonRT(config_non_rt);
 }
 
