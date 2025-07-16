@@ -471,6 +471,9 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
       ROS_WARN("%s", ex.what());
     }
   }
+  for (const auto& in_limit : pos_des_in_limit_)
+    if (!in_limit.second)
+      vel_des[in_limit.first] = 0.;
   for (auto& td : tracking_differentiator_)
   {
     td.second->update(last_pos_des_[td.first] +
@@ -483,10 +486,6 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
     else
       angle_error[td.first] = angles::shortest_angular_distance(pos_real[td.first], pos_des[td.first]);
   }
-  for (const auto& in_limit : pos_des_in_limit_)
-    if (!in_limit.second)
-      vel_des[in_limit.first] = 0.;
-
   if (pid_pos_.find(1) != pid_pos_.end() && ctrls_.find(1) != ctrls_.end())
   {
     pid_pos_.at(1)->computeCommand(angle_error[1], period);
