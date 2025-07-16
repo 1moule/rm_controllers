@@ -226,18 +226,14 @@ void Controller::rate(const ros::Time& time, const ros::Duration& period)
       odom2gimbal_des_.transform.rotation = odom2gimbal_.transform.rotation;
       odom2gimbal_des_.header.stamp = time;
       robot_state_handle_.setTransform(odom2gimbal_des_, "rm_gimbal_controllers");
-      double des[3]{ 0. };
-      quatToRPY(odom2gimbal_des_.transform.rotation, des[0], des[1], des[2]);
-      for (auto& td : tracking_differentiator_)
-        td.second->clear(des[td.first]);
       start_ = false;
     }
   }
   else
   {
-    double des[3]{ 0. };
-    quatToRPY(odom2gimbal_des_.transform.rotation, des[0], des[1], des[2]);
-    setDes(time, des[2] + period.toSec() * cmd_gimbal_.rate_yaw, des[1] + period.toSec() * cmd_gimbal_.rate_pitch);
+    double roll{}, pitch{}, yaw{};
+    quatToRPY(odom2gimbal_des_.transform.rotation, roll, pitch, yaw);
+    setDes(time, yaw + period.toSec() * cmd_gimbal_.rate_yaw, pitch + period.toSec() * cmd_gimbal_.rate_pitch);
   }
 }
 
