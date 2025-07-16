@@ -344,23 +344,6 @@ void Controller::traj(const ros::Time& time)
   {  // on enter
     state_changed_ = false;
     ROS_INFO("[Gimbal] Enter TRAJ");
-    std::string frame_id;
-    if (!cmd_gimbal_.traj_frame_id.empty())
-      frame_id = cmd_gimbal_.traj_frame_id;
-    else
-      frame_id = "odom";
-    try
-    {
-      double traj[3]{ 0. };
-      geometry_msgs::TransformStamped odom2traj = robot_state_handle_.lookupTransform("odom", frame_id, time);
-      quatToRPY(odom2traj.transform.rotation, traj[0], traj[1], traj[2]);
-      for (auto& td : tracking_differentiator_)
-        td.second->clear(traj[td.first]);
-    }
-    catch (tf2::TransformException& ex)
-    {
-      ROS_WARN("%s", ex.what());
-    }
   }
   double traj[3]{ 0. };
   try
@@ -442,7 +425,7 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
     if (ctrls_.find(2) != ctrls_.end())
       angular_vel.z = ctrls_.at(2)->joint_.getVelocity();
   }
-  double pos_real[3]{ 0. }, pos_des[3]{ 0. }, vel_des[3]{ 0. }, angle_error[3]{ 0. };
+  double pos_real[3]{ 0. }, pos_des_temp[3]{ 0. }, pos_des[3]{ 0. }, vel_des[3]{ 0. }, angle_error[3]{ 0. };
   quatToRPY(odom2gimbal_des_.transform.rotation, pos_des[0], pos_des[1], pos_des[2]);
   quatToRPY(odom2gimbal_.transform.rotation, pos_real[0], pos_real[1], pos_real[2]);
   for (int i = 0; i < 3; i++)
@@ -474,8 +457,7 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
         tf2::doTransform(target_vel, target_vel, transform);
         tf2::fromMsg(target_pos, target_pos_tf);
         tf2::fromMsg(target_vel, target_vel_tf);
-        //        vel_des[2] = target_pos_tf.cross(target_vel_tf).z() / std::pow((target_pos_tf.length()), 2);
-        vel_des[2] = angles::shortest_angular_distance(last_pos_des_[2], pos_des[2]) / period.toSec();
+        vel_des[2] = target_pos_tf.cross(target_vel_tf).z() / std::pow((target_pos_tf.length()), 2);
       }
       if (joint_urdfs_.find(1) != joint_urdfs_.end())
       {
@@ -493,11 +475,17 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
       ROS_WARN("%s", ex.what());
     }
   }
-  last_pos_des_[2] = pos_des[2];
   for (auto& td : tracking_differentiator_)
   {
-    td.second->update(pos_des[td.first], vel_des[td.first]);
-    angle_error[td.first] = angles::shortest_angular_distance(pos_real[td.first], td.second->getX1());
+    td.second->update(last_pos_des_[td.first] +
+                          angles::shortest_angular_distance(last_pos_des_[td.first], pos_des[td.first]),
+                      vel_des[td.first]);
+    last_pos_des_[td.first] += angles::shortest_angular_distance(last_pos_des_[td.first], pos_des[td.first]);
+    pos_des_temp[td.first] = std::remainder(td.second->getX1(), 2 * M_PI);
+    if (state_ != TRACK)
+      angle_error[td.first] = angles::shortest_angular_distance(pos_real[td.first], pos_des_temp[td.first]);
+    else
+      angle_error[td.first] = angles::shortest_angular_distance(pos_real[td.first], pos_des[td.first]);
   }
   for (const auto& in_limit : pos_des_in_limit_)
     if (!in_limit.second)
@@ -532,7 +520,7 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
         pub.second->msg_.set_point_dot = vel_des[pub.first];
         pub.second->msg_.process_value = pos_real[pub.first];
         pub.second->msg_.error = angles::shortest_angular_distance(pos_real[pub.first], pos_des[pub.first]);
-        pub.second->msg_.command = tracking_differentiator_[pub.first]->getX1();
+        pub.second->msg_.command = pid_pos_[pub.first]->getCurrentCmd();
         pub.second->unlockAndPublish();
       }
     }
