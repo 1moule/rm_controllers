@@ -82,13 +82,14 @@ public:
       else
         target_armor_ = FRONT;
 
+      // Judge ready switch
       int offset = (target_armor_ == BACK && v_yaw_ > 0.) ? -4 : 0;
       if (((std::remainder(yaw_ + (M_PI * 2 / armors_num_) * (target_armor_ + offset - 1) + v_yaw_ * delay_ - output_yaw,
                            2 * M_PI)) > switch_armor_angle &&
            v_yaw_ > 1.) ||
           (std::remainder(yaw_ + (M_PI * 2 / armors_num_) * (target_armor_ - 1) + v_yaw_ * delay_ - output_yaw,
                           2 * M_PI) < -switch_armor_angle &&
-           v_yaw_ < 1.))
+           v_yaw_ < -1.))
         switch_armor_state_ = READY_SWITCH;
       else
       {
@@ -101,17 +102,17 @@ public:
     }
     else
     {
-      if (((((yaw_ + v_yaw_ * (rough_fly_time + delay_)) > output_yaw + switch_armor_angle) && v_yaw_ > 0.) ||
-           (((yaw_ + v_yaw_ * (rough_fly_time + delay_)) < output_yaw - switch_armor_angle) && v_yaw_ < 0.)) &&
-          std::abs(v_yaw_) >= 1.0)
+      if ((std::remainder(yaw_ + v_yaw_ * (rough_fly_time + delay_) - output_yaw, 2 * M_PI) > switch_armor_angle &&
+           v_yaw_ > 1.) ||
+          (std::remainder(yaw_ + v_yaw_ * (rough_fly_time + delay_) - output_yaw, 2 * M_PI) < -switch_armor_angle &&
+           v_yaw_ < -1.))
       {
-        if (((((yaw_ - (M_PI * 2 / armors_num_) + v_yaw_ * (rough_fly_time + delay_)) >
-               output_yaw + switch_armor_angle) &&
-              v_yaw_ > 0.) ||
-             (((yaw_ + (M_PI * 2 / armors_num_) + v_yaw_ * (rough_fly_time + delay_)) <
-               output_yaw - switch_armor_angle) &&
-              v_yaw_ < 0.)) &&
-            std::abs(v_yaw_) >= 1.0)
+        if ((std::remainder(yaw_ - (M_PI * 2 / armors_num_) + v_yaw_ * (rough_fly_time + delay_) - output_yaw,
+                            2 * M_PI) > switch_armor_angle &&
+             v_yaw_ > 1.) ||
+            (std::remainder(yaw_ + (M_PI * 2 / armors_num_) + v_yaw_ * (rough_fly_time + delay_) - output_yaw,
+                            2 * M_PI) < -switch_armor_angle &&
+             v_yaw_ < -1.))
           target_armor_ = BACK;
         else
           target_armor_ = v_yaw_ > 0. ? LEFT : RIGHT;

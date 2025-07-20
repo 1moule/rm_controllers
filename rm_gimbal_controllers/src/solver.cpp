@@ -43,6 +43,7 @@ BulletSolver::BulletSolver(ros::NodeHandle& controller_nh)
 void BulletSolver::selectTarget(geometry_msgs::Point pos, geometry_msgs::Vector3 vel, double bullet_speed, double yaw,
                                 double v_yaw, double r1, double r2, double dz, int armors_num)
 {
+  // Configure Selector
   config_ = *config_rt_buffer_.readFromRT();
   bullet_speed_ = bullet_speed;
   resistance_coff_ = getResistanceCoefficient(bullet_speed_) != 0 ? getResistanceCoefficient(bullet_speed_) : 0.001;
@@ -53,10 +54,14 @@ void BulletSolver::selectTarget(geometry_msgs::Point pos, geometry_msgs::Vector3
   target_selector_->setTargetState(pos, vel, yaw, v_yaw, r1, r2, armors_num);
   target_selector_->configure(config_.delay, bullet_speed, resistance_coff_, gimbal_switch_duration_.output(v_yaw),
                               config_.min_switch_angle, config_.min_switch_count, track_target_);
+
+  // Select Target Armor
   target_armor_ = target_selector_->getTargetArmor();
   current_switch_state_ = target_selector_->getSwitchArmorState();
   if (current_switch_state_ == START_SWITCH)
     switch_armor_time_ = ros::Time::now();
+
+  // Configure Target Kinematic
   double r = (target_armor_ == FRONT || target_armor_ == BACK) ? r1 : r2;
   int offset = (target_armor_ == BACK && v_yaw > 0.) ? -4 : 0;
   double yaw_offset = v_yaw > 0. ? config_.track_rotate_target_delay : -config_.track_rotate_target_delay;
