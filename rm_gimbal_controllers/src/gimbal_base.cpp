@@ -247,6 +247,13 @@ void Controller::track(const ros::Time& time)
   quatToRPY(odom2gimbal_.transform.rotation, roll_real, pitch_real, yaw_real);
   double yaw_compute = yaw_real;
   double pitch_compute = -pitch_real;
+  data_track_.yaw += data_track_.v_yaw * ((time - data_track_.header.stamp).toSec());
+  data_track_.position.x +=
+      data_track_.velocity.x * (time - data_track_.header.stamp).toSec() - odom2gimbal_.transform.translation.x;
+  data_track_.position.y +=
+      data_track_.velocity.y * (time - data_track_.header.stamp).toSec() - odom2gimbal_.transform.translation.y;
+  data_track_.position.z +=
+      data_track_.velocity.z * (time - data_track_.header.stamp).toSec() - odom2gimbal_.transform.translation.z;
   geometry_msgs::Point target_pos = data_track_.position;
   geometry_msgs::Vector3 target_vel{};
   if (data_track_.id != 12)
@@ -265,16 +272,12 @@ void Controller::track(const ros::Time& time)
   {
     ROS_WARN("%s", ex.what());
   }
-  double yaw = data_track_.yaw + data_track_.v_yaw * ((time - data_track_.header.stamp).toSec());
-  target_pos.x += target_vel.x * (time - data_track_.header.stamp).toSec() - odom2gimbal_.transform.translation.x;
-  target_pos.y += target_vel.y * (time - data_track_.header.stamp).toSec() - odom2gimbal_.transform.translation.y;
-  target_pos.z += target_vel.z * (time - data_track_.header.stamp).toSec() - odom2gimbal_.transform.translation.z;
   target_vel.x -= chassis_vel_->linear_->x();
   target_vel.y -= chassis_vel_->linear_->y();
   target_vel.z -= chassis_vel_->linear_->z();
-  bool solve_success = bullet_solver_->solve(target_pos, target_vel, cmd_gimbal_.bullet_speed, yaw, data_track_.v_yaw,
-                                             data_track_.radius_1, data_track_.radius_2, data_track_.dz,
-                                             data_track_.armors_num, chassis_vel_->angular_->z());
+  bool solve_success = bullet_solver_->solve(target_pos, target_vel, cmd_gimbal_.bullet_speed, data_track_.yaw,
+                                             data_track_.v_yaw, data_track_.radius_1, data_track_.radius_2,
+                                             data_track_.dz, data_track_.armors_num, chassis_vel_->angular_->z());
   bullet_solver_->judgeShootBeforehand(time, data_track_.v_yaw);
 
   if (publish_rate_ > 0.0 && last_publish_time_ + ros::Duration(1.0 / publish_rate_) < time)
@@ -446,7 +449,6 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
                                                         data_track_.header.stamp);
         tf2::doTransform(target_pos, target_pos, transform);
         tf2::doTransform(target_vel, target_vel, transform);
-        target_vel.x -= angular_vel.z * 0.047;
         tf2::fromMsg(target_pos, target_pos_tf);
         tf2::fromMsg(target_vel, target_vel_tf);
         vel_des[2] = target_pos_tf.cross(target_vel_tf).z() / std::pow((target_pos_tf.length()), 2);
