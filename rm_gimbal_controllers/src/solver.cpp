@@ -59,7 +59,8 @@ void BulletSolver::selectTarget(geometry_msgs::Point pos, geometry_msgs::Vector3
     switch_armor_time_ = ros::Time::now();
   double r = (target_armor_ == FRONT || target_armor_ == BACK) ? r1 : r2;
   int offset = (target_armor_ == BACK && v_yaw > 0.) ? -4 : 0;
-  yaw += (M_PI * 2 / armors_num) * (target_armor_ + offset - 1);
+  double yaw_offset = v_yaw > 0. ? config_.track_rotate_target_delay : -config_.track_rotate_target_delay;
+  yaw += (M_PI * 2 / armors_num) * (target_armor_ + offset - 1) + yaw_offset;
   if (target_armor_ == LEFT || target_armor_ == RIGHT)
     pos.z += dz;
   tracked_target_kinematic_->reset(pos, vel, yaw, v_yaw, r);
@@ -132,13 +133,13 @@ void BulletSolver::getSelectedArmorPosAndVel(geometry_msgs::Point& armor_pos, ge
 {
   if (track_target_)
   {
-    armor_pos = tracked_target_kinematic_->position(0.);
-    armor_vel = tracked_target_kinematic_->velocity(0.);
+    armor_pos = tracked_target_kinematic_->position(fly_time_);
+    armor_vel = tracked_target_kinematic_->velocity(fly_time_);
   }
   else
   {
-    armor_pos = untracked_target_kinematic_->position(0.);
-    armor_vel = untracked_target_kinematic_->velocity(0.);
+    armor_pos = untracked_target_kinematic_->position(fly_time_);
+    armor_vel = untracked_target_kinematic_->velocity(fly_time_);
   }
 }
 

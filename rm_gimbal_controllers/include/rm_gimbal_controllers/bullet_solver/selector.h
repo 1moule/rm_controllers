@@ -101,7 +101,13 @@ public:
           std::abs(v_yaw_) >= 1.0)
         switch_armor_state_ = READY_SWITCH;
       else
-        switch_armor_state_ = NO_SWITCH;
+      {
+        if (switch_armor_state_ == READY_SWITCH && (current_armor_ == LEFT || current_armor_ == RIGHT) &&
+            target_armor_ == FRONT)
+          switch_armor_state_ = READY_SWITCH;
+        else
+          switch_armor_state_ = NO_SWITCH;
+      }
     }
     else
     {
