@@ -84,10 +84,12 @@ public:
 
       // Judge ready switch
       int offset = (target_armor_ == BACK && v_yaw_ > 0.) ? -4 : 0;
-      if (((std::remainder(yaw_ + (M_PI * 2 / armors_num_) * (target_armor_ + offset - 1) + v_yaw_ * delay_ - output_yaw,
+      if (((std::remainder(yaw_ + (M_PI * 2 / armors_num_) * (target_armor_ + offset - 1) +
+                               v_yaw_ * (delay_ - 0.001 * min_switch_count_) - output_yaw,
                            2 * M_PI)) > switch_armor_angle &&
            v_yaw_ > 1.) ||
-          (std::remainder(yaw_ + (M_PI * 2 / armors_num_) * (target_armor_ - 1) + v_yaw_ * delay_ - output_yaw,
+          (std::remainder(yaw_ + (M_PI * 2 / armors_num_) * (target_armor_ - 1) +
+                              v_yaw_ * (delay_ - 0.001 * min_switch_count_) - output_yaw,
                           2 * M_PI) < -switch_armor_angle &&
            v_yaw_ < -1.))
         switch_armor_state_ = READY_SWITCH;
