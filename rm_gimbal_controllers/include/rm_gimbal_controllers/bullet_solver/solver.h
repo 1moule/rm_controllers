@@ -62,6 +62,7 @@ private:
   bool track_target_{};
   double output_yaw_{}, output_pitch_{};
   double bullet_speed_{}, resistance_coff_{}, fly_time_{};
+  double last_yaw_{}, filtered_yaw_{};
   int target_armor_{};
   int current_switch_state_{};
 };

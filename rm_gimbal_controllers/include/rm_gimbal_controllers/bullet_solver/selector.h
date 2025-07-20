@@ -55,20 +55,20 @@ public:
     double rough_fly_time =
         (-std::log(1 - target_rho * resistance_coff_ / (bullet_speed_ * std::cos(output_pitch)))) / resistance_coff_;
     double min_switch_angle = min_switch_angle_ / 180 * M_PI;
-    double switch_armor_angle =
-        track_target_ ? M_PI / armors_num_ - (2 * rough_fly_time + gimbal_switch_duration_) / 2 * abs(v_yaw_) :
-                        min_switch_angle;
+    switch_armor_angle_ = track_target_ ?
+                              M_PI / armors_num_ - (2 * rough_fly_time + gimbal_switch_duration_) / 2 * abs(v_yaw_) :
+                              min_switch_angle;
     if (track_target_)
     {
-      if ((std::remainder(yaw_ - output_yaw, 2 * M_PI) > switch_armor_angle && v_yaw_ > 1.) ||
-          (std::remainder(yaw_ - output_yaw, 2 * M_PI) < -switch_armor_angle && v_yaw_ < -1.))
+      if ((std::remainder(yaw_ - output_yaw, 2 * M_PI) > switch_armor_angle_ && v_yaw_ > 1.) ||
+          (std::remainder(yaw_ - output_yaw, 2 * M_PI) < -switch_armor_angle_ && v_yaw_ < -1.))
       {
         switch_count_++;
         if (switch_count_ > min_switch_count_)
         {
-          if ((std::remainder(yaw_ - (M_PI * 2 / armors_num_) - output_yaw, 2 * M_PI) > switch_armor_angle &&
+          if ((std::remainder(yaw_ - (M_PI * 2 / armors_num_) - output_yaw, 2 * M_PI) > switch_armor_angle_ &&
                v_yaw_ > 1.) ||
-              (std::remainder(yaw_ + (M_PI * 2 / armors_num_) - output_yaw, 2 * M_PI) < -switch_armor_angle &&
+              (std::remainder(yaw_ + (M_PI * 2 / armors_num_) - output_yaw, 2 * M_PI) < -switch_armor_angle_ &&
                v_yaw_ < -1.))
           {
             next_switch_count_++;
@@ -86,11 +86,11 @@ public:
       int offset = (target_armor_ == BACK && v_yaw_ > 0.) ? -4 : 0;
       if (((std::remainder(yaw_ + (M_PI * 2 / armors_num_) * (target_armor_ + offset - 1) +
                                v_yaw_ * (delay_ - 0.001 * min_switch_count_) - output_yaw,
-                           2 * M_PI)) > switch_armor_angle &&
+                           2 * M_PI)) > switch_armor_angle_ &&
            v_yaw_ > 1.) ||
           (std::remainder(yaw_ + (M_PI * 2 / armors_num_) * (target_armor_ - 1) +
                               v_yaw_ * (delay_ - 0.001 * min_switch_count_) - output_yaw,
-                          2 * M_PI) < -switch_armor_angle &&
+                          2 * M_PI) < -switch_armor_angle_ &&
            v_yaw_ < -1.))
         switch_armor_state_ = READY_SWITCH;
       else
@@ -104,16 +104,16 @@ public:
     }
     else
     {
-      if ((std::remainder(yaw_ + v_yaw_ * (rough_fly_time + delay_) - output_yaw, 2 * M_PI) > switch_armor_angle &&
+      if ((std::remainder(yaw_ + v_yaw_ * (rough_fly_time + delay_) - output_yaw, 2 * M_PI) > switch_armor_angle_ &&
            v_yaw_ > 1.) ||
-          (std::remainder(yaw_ + v_yaw_ * (rough_fly_time + delay_) - output_yaw, 2 * M_PI) < -switch_armor_angle &&
+          (std::remainder(yaw_ + v_yaw_ * (rough_fly_time + delay_) - output_yaw, 2 * M_PI) < -switch_armor_angle_ &&
            v_yaw_ < -1.))
       {
         if ((std::remainder(yaw_ - (M_PI * 2 / armors_num_) + v_yaw_ * (rough_fly_time + delay_) - output_yaw,
-                            2 * M_PI) > switch_armor_angle &&
+                            2 * M_PI) > switch_armor_angle_ &&
              v_yaw_ > 1.) ||
             (std::remainder(yaw_ + (M_PI * 2 / armors_num_) + v_yaw_ * (rough_fly_time + delay_) - output_yaw,
-                            2 * M_PI) < -switch_armor_angle &&
+                            2 * M_PI) < -switch_armor_angle_ &&
              v_yaw_ < -1.))
           target_armor_ = BACK;
         else
@@ -136,10 +136,13 @@ public:
 
     return target_armor_;
   }
-
   int getSwitchArmorState()
   {
     return switch_armor_state_;
+  }
+  double getSwitchArmorAngle()
+  {
+    return switch_armor_angle_;
   }
 
 private:
@@ -147,6 +150,7 @@ private:
   geometry_msgs::Vector3 vel_;
   double yaw_{}, v_yaw_{}, r1_{}, r2_{};
   double delay_{}, bullet_speed_{}, gimbal_switch_duration_{}, resistance_coff_{}, min_switch_angle_{};
+  double switch_armor_angle_{};
   int current_armor_{ 1 }, target_armor_{ 1 };
   int switch_armor_state_{ 0 };
   int switch_count_{ 0 }, next_switch_count_{ 0 };

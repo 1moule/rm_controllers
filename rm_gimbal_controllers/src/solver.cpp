@@ -51,7 +51,12 @@ void BulletSolver::selectTarget(geometry_msgs::Point pos, geometry_msgs::Vector3
     track_target_ = true;
   if (track_target_ && (std::abs(v_yaw) > config_.max_track_target_vel + 1.))
     track_target_ = false;
-  target_selector_->setTargetState(pos, vel, yaw, v_yaw, r1, r2, armors_num);
+  if (abs(yaw - last_yaw_) > 1.)
+    filtered_yaw_ = yaw;
+  else if (last_yaw_ != yaw)
+    filtered_yaw_ = filtered_yaw_ + (yaw - filtered_yaw_) * (0.001 / (0.01 + 0.001));
+  last_yaw_ = yaw;
+  target_selector_->setTargetState(pos, vel, filtered_yaw_, v_yaw, r1, r2, armors_num);
   target_selector_->configure(config_.delay, bullet_speed, resistance_coff_, gimbal_switch_duration_.output(v_yaw),
                               config_.min_switch_angle, config_.min_switch_count, track_target_);
 
@@ -164,6 +169,7 @@ void BulletSolver::publishState()
   if (state_pub_->trylock())
   {
     state_pub_->msg_.fly_time = fly_time_;
+    state_pub_->msg_.switch_armor_angle = target_selector_->getSwitchArmorAngle();
     state_pub_->msg_.target_armor = target_armor_;
     state_pub_->msg_.switch_armor_state = current_switch_state_;
     state_pub_->msg_.track_target = track_target_;
