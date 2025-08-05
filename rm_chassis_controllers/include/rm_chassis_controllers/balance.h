@@ -21,7 +21,6 @@ class BalanceController : public ChassisBase<rm_control::RobotStateInterface, ha
   enum BalanceMode
   {
     NORMAL,
-    BLOCK
   };
 
 public:
@@ -31,10 +30,9 @@ public:
 private:
   void moveJoint(const ros::Time& time, const ros::Duration& period) override;
   void normal(const ros::Time& time, const ros::Duration& period);
-  void block(const ros::Time& time, const ros::Duration& period);
   geometry_msgs::Twist odometry() override;
-  static const int STATE_DIM = 10;
-  static const int CONTROL_DIM = 4;
+  static const int STATE_DIM = 6;
+  static const int CONTROL_DIM = 2;
   Eigen::Matrix<double, CONTROL_DIM, STATE_DIM> k_{};
   Eigen::Matrix<double, STATE_DIM, STATE_DIM> a_{}, q_{};
   Eigen::Matrix<double, STATE_DIM, CONTROL_DIM> b_{};
@@ -47,13 +45,9 @@ private:
   double yaw_des_ = 0;
 
   int balance_mode_;
-  ros::Time block_time_, last_block_time_;
-  double block_angle_, block_duration_, block_velocity_, block_effort_, anti_block_effort_, block_overtime_;
-  bool balance_state_changed_ = false, maybe_block_ = false;
 
   hardware_interface::ImuSensorHandle imu_handle_;
-  hardware_interface::JointHandle left_wheel_joint_handle_, right_wheel_joint_handle_,
-      left_momentum_block_joint_handle_, right_momentum_block_joint_handle_;
+  hardware_interface::JointHandle left_wheel_joint_handle_, right_wheel_joint_handle_;
 
   typedef std::shared_ptr<realtime_tools::RealtimePublisher<rm_msgs::BalanceState>> RtpublisherPtr;
   RtpublisherPtr state_pub_;
