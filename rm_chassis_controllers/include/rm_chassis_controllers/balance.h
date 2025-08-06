@@ -37,7 +37,7 @@ private:
   Eigen::Matrix<double, STATE_DIM, STATE_DIM> a_{}, q_{};
   Eigen::Matrix<double, STATE_DIM, CONTROL_DIM> b_{};
   Eigen::Matrix<double, CONTROL_DIM, CONTROL_DIM> r_{};
-  Eigen::Matrix<double, STATE_DIM, 1> x_, x_other_;
+  Eigen::Matrix<double, STATE_DIM, 1> x_;
   double wheel_radius_, wheel_base_;
   double position_des_ = 0;
   double position_offset_ = 0.;

@@ -116,7 +116,7 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
   double a = m * g * l * (m + m_w) / D;
   double b = -m * l / (D * wheel_radius_);
   double c = -m * m * l * l * g / D;
-  double d = (1 / (m + m_w) * wheel_radius_) - (m * m * l * l / (m + m_w) * D);
+  double d = (1 / (m + m_w) * wheel_radius_) + (m * m * l * l / ((m + m_w) * D * wheel_radius_));
   // clang-format off
   a_<<0.,1.,0.,0.,
       a ,0.,0.,0.,
@@ -200,21 +200,12 @@ void BalanceController::moveJoint(const ros::Time& time, const ros::Duration& pe
 void BalanceController::normal(const ros::Time& time, const ros::Duration& period)
 {
   x_[0] = pitch_;
-  x_other_[0] = pitch_;
   x_[1] = angular_vel_base_.y;
-  x_other_[1] = angular_vel_base_.y;
-  x_[3] = left_wheel_joint_handle_.getVelocity() * wheel_radius_;
-  x_other_[3] = right_wheel_joint_handle_.getVelocity() * wheel_radius_;
+  x_[3] = (left_wheel_joint_handle_.getVelocity() + right_wheel_joint_handle_.getVelocity()) / 2. * wheel_radius_;
   x_[2] += x_[3] * period.toSec();
-  x_other_[2] += x_other_[3] * period.toSec();
-  //  yaw_des_ += vel_cmd_.z * period.toSec();
-  //  position_des_ += vel_cmd_.x * period.toSec();
   Eigen::Matrix<double, CONTROL_DIM, 1> u, u_other;
   auto x = x_;
-  auto x_other = x_other_;
-  //  x(2) -= position_des_;
   u = k_ * (-x);
-  u_other = k_ * (-x_other);
   if (state_pub_->trylock())
   {
     state_pub_->msg_.header.stamp = time;
@@ -223,12 +214,12 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
     state_pub_->msg_.x = x(2);
     state_pub_->msg_.x_dot = x(3);
     state_pub_->msg_.T_l = u(0);
-    state_pub_->msg_.T_r = u_other(0);
+    state_pub_->msg_.T_r = u(0);
     state_pub_->unlockAndPublish();
   }
 
   left_wheel_joint_handle_.setCommand(u(0));
-  right_wheel_joint_handle_.setCommand(u_other(0));
+  right_wheel_joint_handle_.setCommand(u(0));
 }
 
 geometry_msgs::Twist BalanceController::odometry()
