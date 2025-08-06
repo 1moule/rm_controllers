@@ -214,7 +214,7 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   auto x = x_;
   x(3) -= vel_cmd_.x;
   u = k_ * (-x);
-  pid_yaw_vel_.computeCommand(0.0 - angular_vel_base_.z, period);
+  pid_yaw_vel_.computeCommand(vel_cmd_.z - angular_vel_base_.z, period);
   pid_vel_x_.computeCommand(vel_cmd_.x - x_[3], period);
   if (state_pub_->trylock())
   {
