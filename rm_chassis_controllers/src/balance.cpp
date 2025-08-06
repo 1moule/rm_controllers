@@ -83,6 +83,13 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
   controller_nh.getParam("position_offset", position_offset_);
   controller_nh.getParam("position_clear_threshold", position_clear_threshold_);
 
+  if (controller_nh.hasParam("pid_yaw_vel"))
+    if (!pid_yaw_vel_.init(ros::NodeHandle(controller_nh, "pid_yaw_vel")))
+      return false;
+  if (controller_nh.hasParam("pid_vel_x"))
+    if (!pid_vel_x_.init(ros::NodeHandle(controller_nh, "pid_vel_x")))
+      return false;
+
   q_.setZero();
   r_.setZero();
   XmlRpc::XmlRpcValue q, r;
@@ -206,6 +213,8 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   Eigen::Matrix<double, CONTROL_DIM, 1> u, u_other;
   auto x = x_;
   u = k_ * (-x);
+  pid_yaw_vel_.computeCommand(0.0 - angular_vel_base_.z, period);
+  pid_vel_x_.computeCommand(0.0 - x_[3], period);
   if (state_pub_->trylock())
   {
     state_pub_->msg_.header.stamp = time;
@@ -218,8 +227,8 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
     state_pub_->unlockAndPublish();
   }
 
-  left_wheel_joint_handle_.setCommand(u(0));
-  right_wheel_joint_handle_.setCommand(u(0));
+  left_wheel_joint_handle_.setCommand(u(0) - pid_yaw_vel_.getCurrentCmd() + pid_vel_x_.getCurrentCmd());
+  right_wheel_joint_handle_.setCommand(u(0) + pid_yaw_vel_.getCurrentCmd() + pid_vel_x_.getCurrentCmd());
 }
 
 geometry_msgs::Twist BalanceController::odometry()

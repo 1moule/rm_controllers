@@ -49,6 +49,8 @@ private:
   hardware_interface::ImuSensorHandle imu_handle_;
   hardware_interface::JointHandle left_wheel_joint_handle_, right_wheel_joint_handle_;
 
+  control_toolbox::Pid pid_yaw_vel_, pid_vel_x_;
+
   typedef std::shared_ptr<realtime_tools::RealtimePublisher<rm_msgs::BalanceState>> RtpublisherPtr;
   RtpublisherPtr state_pub_;
   geometry_msgs::Vector3 angular_vel_base_;
