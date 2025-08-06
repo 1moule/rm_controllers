@@ -21,11 +21,9 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
 
   imu_handle_ = robot_hw->get<hardware_interface::ImuSensorInterface>()->getHandle(
       getParam(controller_nh, "imu_name", std::string("base_imu")));
-  std::string left_wheel_joint, right_wheel_joint, left_momentum_block_joint, right_momentum_block_joint;
+  std::string left_wheel_joint, right_wheel_joint;
   if (!controller_nh.getParam("left/wheel_joint", left_wheel_joint) ||
-      !controller_nh.getParam("left/block_joint", left_momentum_block_joint) ||
-      !controller_nh.getParam("right/wheel_joint", right_wheel_joint) ||
-      !controller_nh.getParam("right/block_joint", right_momentum_block_joint))
+      !controller_nh.getParam("right/wheel_joint", right_wheel_joint))
   {
     ROS_ERROR("Some Joints' name doesn't given. (namespace: %s)", controller_nh.getNamespace().c_str());
     return false;
@@ -114,12 +112,21 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
   }
 
   // Continuous model \dot{x} = A x + B u
-  //  a_ << 0., 0., 0., 0., 0., 1.0, 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1.0, 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
-  //      1.0, 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1.0, 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1.0, 0., 0., a_5_2,
-  //      a_5_3, a_5_4, 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., a_7_2, a_7_3, a_7_4, 0., 0., 0.,
-  //      0., 0., 0., 0., a_8_2, a_8_3, a_8_4, 0., 0., 0., 0., 0., 0., 0., a_9_2, a_9_3, a_9_4, 0., 0., 0., 0., 0.;
-  //  b_ << 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., b_5_0, b_5_1, b_5_2, b_5_3,
-  //      b_6_0, b_6_1, b_6_2, b_6_3, b_7_0, b_7_1, b_7_2, b_7_3, b_8_0, b_8_1, b_8_2, b_8_3, b_9_0, b_9_1, b_9_2, b_9_3;
+  double D = (m + m_w) * (i_m + m * l * l) - m * m * l * l;
+  double a = m * g * l * (m + m_w) / D;
+  double b = -m * l / (D * wheel_radius_);
+  double c = -m * m * l * l * g / D;
+  double d = (1 / (m + m_w) * wheel_radius_) - (m * m * l * l / (m + m_w) * D);
+  // clang-format off
+  a_<<0.,1.,0.,0.,
+      a ,0.,0.,0.,
+      0.,0.,0.,1.,
+      c ,0.,0.,0.;
+  b_<<0.,
+      b ,
+      0.,
+      d;
+  // clang-format on
 
   ROS_INFO_STREAM("A:" << a_);
   ROS_INFO_STREAM("B:" << b_);
@@ -192,58 +199,42 @@ void BalanceController::moveJoint(const ros::Time& time, const ros::Duration& pe
 
 void BalanceController::normal(const ros::Time& time, const ros::Duration& period)
 {
-  x_[5] = ((left_wheel_joint_handle_.getVelocity() + right_wheel_joint_handle_.getVelocity()) / 2 -
-           imu_handle_.getAngularVelocity()[1]) *
-          wheel_radius_;
-  x_[0] += x_[5] * period.toSec();
-  x_[1] = yaw_;
-  x_[2] = pitch_;
-  x_[6] = angular_vel_base_.z;
-  x_[7] = angular_vel_base_.y;
-  yaw_des_ += vel_cmd_.z * period.toSec();
-  position_des_ += vel_cmd_.x * period.toSec();
-  Eigen::Matrix<double, CONTROL_DIM, 1> u;
+  x_[0] = pitch_;
+  x_other_[0] = pitch_;
+  x_[1] = angular_vel_base_.y;
+  x_other_[1] = angular_vel_base_.y;
+  x_[3] = left_wheel_joint_handle_.getVelocity() * wheel_radius_;
+  x_other_[3] = right_wheel_joint_handle_.getVelocity() * wheel_radius_;
+  x_[2] += x_[3] * period.toSec();
+  x_other_[2] += x_other_[3] * period.toSec();
+  //  yaw_des_ += vel_cmd_.z * period.toSec();
+  //  position_des_ += vel_cmd_.x * period.toSec();
+  Eigen::Matrix<double, CONTROL_DIM, 1> u, u_other;
   auto x = x_;
-  x(0) -= position_des_;
-  x(1) = angles::shortest_angular_distance(yaw_des_, x_(1));
-  if (state_ != RAW)
-    x(5) -= vel_cmd_.x;
-  x(6) -= vel_cmd_.z;
-  if (std::abs(x(0) + position_offset_) > position_clear_threshold_)
-  {
-    x_[0] = 0.;
-    position_des_ = position_offset_;
-  }
+  auto x_other = x_other_;
+  //  x(2) -= position_des_;
   u = k_ * (-x);
+  u_other = k_ * (-x_other);
   if (state_pub_->trylock())
   {
     state_pub_->msg_.header.stamp = time;
-    state_pub_->msg_.x = x(0);
-    state_pub_->msg_.phi = x(1);
-    state_pub_->msg_.theta = x(2);
-    state_pub_->msg_.x_b_l = x(3);
-    state_pub_->msg_.x_b_r = x(4);
-    state_pub_->msg_.x_dot = x(5);
-    state_pub_->msg_.phi_dot = x(6);
-    state_pub_->msg_.theta_dot = x(7);
-    state_pub_->msg_.x_b_l_dot = x(8);
-    state_pub_->msg_.x_b_r_dot = x(9);
+    state_pub_->msg_.theta = x(0);
+    state_pub_->msg_.theta_dot = x(1);
+    state_pub_->msg_.x = x(2);
+    state_pub_->msg_.x_dot = x(3);
     state_pub_->msg_.T_l = u(0);
-    state_pub_->msg_.T_r = u(1);
-    state_pub_->msg_.f_b_l = u(2);
-    state_pub_->msg_.f_b_r = u(3);
+    state_pub_->msg_.T_r = u_other(0);
     state_pub_->unlockAndPublish();
   }
 
   left_wheel_joint_handle_.setCommand(u(0));
-  right_wheel_joint_handle_.setCommand(u(1));
+  right_wheel_joint_handle_.setCommand(u_other(0));
 }
 
 geometry_msgs::Twist BalanceController::odometry()
 {
   geometry_msgs::Twist twist;
-  twist.linear.x = x_[5];
-  twist.angular.z = x_[6];
+  twist.linear.x = x_[3];
   return twist;
 }
 }  // namespace rm_chassis_controllers
