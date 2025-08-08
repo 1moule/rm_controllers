@@ -68,7 +68,12 @@ add_library(${PROJECT_NAME}
         src/omni.cpp
         src/sentry.cpp
         src/swerve.cpp
-        src/balance.cpp
+        src/balance/balance.cpp
+        src/balance/vmc/leg_conv.c
+        src/balance/vmc/leg_pos.c
+        src/balance/vmc/leg_spd.c
+        src/balance/gen_A.c
+        src/balance/gen_B.c
 )
 
 ## Specify libraries to link executable targets against

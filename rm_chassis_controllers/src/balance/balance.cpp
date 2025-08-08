@@ -1,0 +1,289 @@
+//
+// Created by qiayuan on 2022/11/15.
+//
+#include "rm_chassis_controllers/balance/balance.h"
+#include "rm_chassis_controllers/balance/vmc/leg_conv.h"
+#include "rm_chassis_controllers/balance/vmc/leg_pos.h"
+#include "rm_chassis_controllers/balance/vmc/leg_spd.h"
+#include "rm_chassis_controllers/balance/gen_A.h"
+#include "rm_chassis_controllers/balance/gen_B.h"
+
+#include <unsupported/Eigen/MatrixFunctions>
+#include "rm_common/ros_utilities.h"
+#include "rm_common/ori_tool.h"
+#include <geometry_msgs/Quaternion.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <pluginlib/class_list_macros.hpp>
+#include <rm_msgs/BalanceState.h>
+#include <angles/angles.h>
+
+using vector_t = Eigen::Matrix<double, Eigen::Dynamic, 1>;
+
+namespace rm_chassis_controllers
+{
+bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& root_nh,
+                             ros::NodeHandle& controller_nh)
+{
+  ChassisBase::init(robot_hw, root_nh, controller_nh);
+
+  imu_handle_ = robot_hw->get<hardware_interface::ImuSensorInterface>()->getHandle(
+      getParam(controller_nh, "imu_name", std::string("base_imu")));
+  std::string left_wheel_joint, right_wheel_joint, left_front_leg_joint, left_back_leg_joint, right_front_leg_joint,
+      right_back_leg_joint;
+  if (!controller_nh.getParam("left/wheel_joint", left_wheel_joint) ||
+      !controller_nh.getParam("right/wheel_joint", right_wheel_joint) ||
+      !controller_nh.getParam("left/front_leg_joint", left_front_leg_joint) ||
+      !controller_nh.getParam("right/front_leg_joint", right_front_leg_joint) ||
+      !controller_nh.getParam("left/back_leg_joint", left_back_leg_joint) ||
+      !controller_nh.getParam("right/back_leg_joint", right_back_leg_joint))
+  {
+    ROS_ERROR("Some Joints' name doesn't given. (namespace: %s)", controller_nh.getNamespace().c_str());
+    return false;
+  }
+  left_wheel_joint_handle_ = robot_hw->get<hardware_interface::EffortJointInterface>()->getHandle(left_wheel_joint);
+  right_wheel_joint_handle_ = robot_hw->get<hardware_interface::EffortJointInterface>()->getHandle(right_wheel_joint);
+  left_front_leg_joint_handle_ =
+      robot_hw->get<hardware_interface::EffortJointInterface>()->getHandle(left_front_leg_joint);
+  right_front_leg_joint_handle_ =
+      robot_hw->get<hardware_interface::EffortJointInterface>()->getHandle(right_front_leg_joint);
+  left_back_leg_joint_handle_ =
+      robot_hw->get<hardware_interface::EffortJointInterface>()->getHandle(left_back_leg_joint);
+  right_back_leg_joint_handle_ =
+      robot_hw->get<hardware_interface::EffortJointInterface>()->getHandle(right_back_leg_joint);
+  joint_handles_.push_back(left_wheel_joint_handle_);
+  joint_handles_.push_back(right_wheel_joint_handle_);
+  joint_handles_.push_back(left_front_leg_joint_handle_);
+  joint_handles_.push_back(right_front_leg_joint_handle_);
+  joint_handles_.push_back(left_back_leg_joint_handle_);
+  joint_handles_.push_back(right_back_leg_joint_handle_);
+
+  // m_w is mass of single wheel
+  // m is mass of the robot except wheels and momentum_blocks
+  // i_w is the moment of inertia of the wheel around the rotational axis of the motor
+  // i_m is the moment of inertia of the robot around the y-axis of base_link coordinate.
+  // l is the vertical component of the distance between the wheel center and the center of mass of robot
+  //  double m_w, m, i_w, i_m, l, g;
+  double L, Lm, l, m_w, m_p, M, i_w, i_p, i_m, g;
+
+  if (!controller_nh.getParam("m_w", m_w))
+  {
+    ROS_ERROR("Params m_w doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
+    return false;
+  }
+  if (!controller_nh.getParam("m_p", m_p))
+  {
+    ROS_ERROR("Params m_w doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
+    return false;
+  }
+  if (!controller_nh.getParam("M", M))
+  {
+    ROS_ERROR("Params m doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
+    return false;
+  }
+  if (!controller_nh.getParam("i_w", i_w))
+  {
+    ROS_ERROR("Params i_w doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
+    return false;
+  }
+  if (!controller_nh.getParam("i_m", i_m))
+  {
+    ROS_ERROR("Params i_m doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
+    return false;
+  }
+  if (!controller_nh.getParam("i_p", i_p))
+  {
+    ROS_ERROR("Params i_m doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
+    return false;
+  }
+  if (!controller_nh.getParam("l", l))
+  {
+    ROS_ERROR("Params l doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
+    return false;
+  }
+  if (!controller_nh.getParam("L", L))
+  {
+    ROS_ERROR("Params l doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
+    return false;
+  }
+  if (!controller_nh.getParam("Lm", Lm))
+  {
+    ROS_ERROR("Params l doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
+    return false;
+  }
+  if (!controller_nh.getParam("leg_length", leg_length_))
+  {
+    ROS_ERROR("Params l doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
+    return false;
+  }
+  if (!controller_nh.getParam("g", g))
+  {
+    ROS_ERROR("Params g doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
+    return false;
+  }
+  if (!controller_nh.getParam("wheel_radius", wheel_radius_))
+  {
+    ROS_ERROR("Params wheel_radius doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
+    return false;
+  }
+  L = leg_length_ * 0.75;
+  Lm = leg_length_ * 0.25;
+
+  if (controller_nh.hasParam("pid_yaw_vel"))
+    if (!pid_yaw_vel_.init(ros::NodeHandle(controller_nh, "pid_yaw_vel")))
+      return false;
+  if (controller_nh.hasParam("pid_left_leg"))
+    if (!pid_left_leg_.init(ros::NodeHandle(controller_nh, "pid_left_leg")))
+      return false;
+  if (controller_nh.hasParam("pid_right_leg"))
+    if (!pid_right_leg_.init(ros::NodeHandle(controller_nh, "pid_right_leg")))
+      return false;
+
+  q_.setZero();
+  r_.setZero();
+  XmlRpc::XmlRpcValue q, r;
+  controller_nh.getParam("q", q);
+  controller_nh.getParam("r", r);
+  // Check and get Q
+  ROS_ASSERT(q.getType() == XmlRpc::XmlRpcValue::TypeArray);
+  ROS_ASSERT(q.size() == STATE_DIM);
+  for (int i = 0; i < STATE_DIM; ++i)
+  {
+    ROS_ASSERT(q[i].getType() == XmlRpc::XmlRpcValue::TypeDouble || q[i].getType() == XmlRpc::XmlRpcValue::TypeInt);
+    if (q[i].getType() == XmlRpc::XmlRpcValue::TypeDouble)
+      q_(i, i) = static_cast<double>(q[i]);
+    else if (q[i].getType() == XmlRpc::XmlRpcValue::TypeInt)
+      q_(i, i) = static_cast<int>(q[i]);
+  }
+  // Check and get R
+  ROS_ASSERT(r.getType() == XmlRpc::XmlRpcValue::TypeArray);
+  ROS_ASSERT(r.size() == CONTROL_DIM);
+  for (int i = 0; i < CONTROL_DIM; ++i)
+  {
+    ROS_ASSERT(r[i].getType() == XmlRpc::XmlRpcValue::TypeDouble || r[i].getType() == XmlRpc::XmlRpcValue::TypeInt);
+    if (r[i].getType() == XmlRpc::XmlRpcValue::TypeDouble)
+      r_(i, i) = static_cast<double>(r[i]);
+    else if (r[i].getType() == XmlRpc::XmlRpcValue::TypeInt)
+      r_(i, i) = static_cast<int>(r[i]);
+  }
+
+  // Continuous model \dot{x} = A x + B u
+  double A[36]{ 0. }, B[12]{ 0. };
+  gen_A(i_m, i_p, i_w, L, Lm, M, wheel_radius_, g, l, m_p, m_w, A);
+  gen_B(i_m, i_p, i_w, L, Lm, M, wheel_radius_, l, m_p, m_w, B);
+  // clang-format off
+  a_<<0.  ,1.,0.,0.,0.   ,0.,
+      A[1],0.,0.,0.,A[25],0.,
+      0.  ,0.,0.,1.,0.   ,0.,
+      A[3],0.,0.,0.,A[27],0.,
+      0.  ,0.,0.,0.,0.   ,1.,
+      A[5],0.,0.,0.,A[29],0.;
+  // clang-format on
+  // clang-format off
+  b_<<0.  ,0.  ,
+      B[1],B[7],
+      0.  ,0.  ,
+      B[3],B[9],
+      0.  ,0.  ,
+      B[5],B[11];
+  // clang-format on
+
+  ROS_INFO_STREAM("A:" << a_);
+  ROS_INFO_STREAM("B:" << b_);
+  Lqr<double> lqr(a_, b_, q_, r_);
+  if (!lqr.computeK())
+  {
+    ROS_ERROR("Failed to compute K of LQR.");
+    return false;
+  }
+
+  k_ = lqr.getK();
+  ROS_INFO_STREAM("K of LQR:" << k_);
+
+  state_pub_.reset(new realtime_tools::RealtimePublisher<rm_msgs::BalanceState>(root_nh, "/state", 100));
+  balance_mode_ = BalanceMode::NORMAL;
+
+  return true;
+}
+
+void BalanceController::moveJoint(const ros::Time& time, const ros::Duration& period)
+{
+  geometry_msgs::Vector3 gyro;
+  gyro.x = imu_handle_.getAngularVelocity()[0];
+  gyro.y = imu_handle_.getAngularVelocity()[1];
+  gyro.z = imu_handle_.getAngularVelocity()[2];
+  try
+  {
+    tf2::doTransform(gyro, angular_vel_base_,
+                     robot_state_handle_.lookupTransform("base_link", imu_handle_.getFrameId(), time));
+  }
+  catch (tf2::TransformException& ex)
+  {
+    ROS_WARN("%s", ex.what());
+    return;
+  }
+  tf2::Transform odom2imu, imu2base, odom2base;
+  try
+  {
+    geometry_msgs::TransformStamped tf_msg;
+    tf_msg = robot_state_handle_.lookupTransform(imu_handle_.getFrameId(), "base_link", time);
+    tf2::fromMsg(tf_msg.transform, imu2base);
+  }
+  catch (tf2::TransformException& ex)
+  {
+    ROS_WARN("%s", ex.what());
+    left_wheel_joint_handle_.setCommand(0.);
+    right_wheel_joint_handle_.setCommand(0.);
+    return;
+  }
+  tf2::Quaternion odom2imu_quaternion;
+  tf2::Vector3 odom2imu_origin;
+  odom2imu_quaternion.setValue(imu_handle_.getOrientation()[0], imu_handle_.getOrientation()[1],
+                               imu_handle_.getOrientation()[2], imu_handle_.getOrientation()[3]);
+  odom2imu_origin.setValue(0, 0, 0);
+  odom2imu.setOrigin(odom2imu_origin);
+  odom2imu.setRotation(odom2imu_quaternion);
+  odom2base = odom2imu * imu2base;
+
+  quatToRPY(toMsg(odom2base).rotation, roll_, pitch_, yaw_);
+
+  switch (balance_mode_)
+  {
+    case BalanceMode::NORMAL:
+    {
+      normal(time, period);
+      break;
+    }
+  }
+}
+
+void BalanceController::normal(const ros::Time& time, const ros::Duration& period)
+{
+  //  control
+  Eigen::Matrix<double, CONTROL_DIM, 1> u;
+  auto x = x_;
+  u = k_ * (-x);
+
+  if (state_pub_->trylock())
+  {
+    state_pub_->msg_.header.stamp = time;
+    state_pub_->msg_.theta = x(0);
+    state_pub_->msg_.theta_dot = x(1);
+    state_pub_->msg_.x = x(2);
+    state_pub_->msg_.x_dot = x(3);
+    state_pub_->msg_.phi = x(4);
+    state_pub_->msg_.phi_dot = x(5);
+    state_pub_->unlockAndPublish();
+  }
+
+  left_wheel_joint_handle_.setCommand(u(0));
+  right_wheel_joint_handle_.setCommand(u(0));
+}
+
+geometry_msgs::Twist BalanceController::odometry()
+{
+  geometry_msgs::Twist twist;
+  twist.linear.x = x_[3];
+  return twist;
+}
+}  // namespace rm_chassis_controllers
+PLUGINLIB_EXPORT_CLASS(rm_chassis_controllers::BalanceController, controller_interface::ControllerBase)
