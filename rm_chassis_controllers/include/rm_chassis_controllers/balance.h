@@ -28,26 +28,29 @@ public:
   bool init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& root_nh, ros::NodeHandle& controller_nh) override;
 
 private:
+  static const int STATE_DIM = 6;
+  static const int CONTROL_DIM = 2;
   void moveJoint(const ros::Time& time, const ros::Duration& period) override;
   void normal(const ros::Time& time, const ros::Duration& period);
+  void generateA(double R, double L, double Lm, double l, double mw, double mp, double M, double Iw, double Ip,
+                 double Im, double g, Eigen::Matrix<double, STATE_DIM, STATE_DIM>& a);
+  void generateB(double R, double L, double Lm, double l, double mw, double mp, double M, double Iw, double Ip,
+                 double Im, double g, Eigen::Matrix<double, STATE_DIM, CONTROL_DIM>& b);
   geometry_msgs::Twist odometry() override;
-  static const int STATE_DIM = 4;
-  static const int CONTROL_DIM = 1;
   Eigen::Matrix<double, CONTROL_DIM, STATE_DIM> k_{};
   Eigen::Matrix<double, STATE_DIM, STATE_DIM> a_{}, q_{};
   Eigen::Matrix<double, STATE_DIM, CONTROL_DIM> b_{};
   Eigen::Matrix<double, CONTROL_DIM, CONTROL_DIM> r_{};
   Eigen::Matrix<double, STATE_DIM, 1> x_;
-  double wheel_radius_, wheel_base_;
+  double wheel_radius_;
   double position_des_ = 0;
-  double position_offset_ = 0.;
-  double position_clear_threshold_ = 0.;
   double yaw_des_ = 0;
 
   int balance_mode_;
 
   hardware_interface::ImuSensorHandle imu_handle_;
-  hardware_interface::JointHandle left_wheel_joint_handle_, right_wheel_joint_handle_;
+  hardware_interface::JointHandle left_wheel_joint_handle_, right_wheel_joint_handle_, left_front_leg_joint_handle_,
+      left_back_leg_joint_handle_, right_front_leg_joint_handle_, right_back_leg_joint_handle_;
 
   control_toolbox::Pid pid_yaw_vel_, pid_vel_x_;
 
