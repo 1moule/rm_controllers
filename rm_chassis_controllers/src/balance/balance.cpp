@@ -144,6 +144,9 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
   if (controller_nh.hasParam("pid_theta_diff"))
     if (!pid_theta_diff_.init(ros::NodeHandle(controller_nh, "pid_theta_diff")))
       return false;
+  if (controller_nh.hasParam("pid_roll"))
+    if (!pid_roll_.init(ros::NodeHandle(controller_nh, "pid_roll")))
+      return false;
 
   q_.setZero();
   r_.setZero();
@@ -300,6 +303,7 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   // PID
   double T_yaw = pid_yaw_vel_.computeCommand(vel_cmd_.z - angular_vel_base_.z, period);
   double T_theta_diff = pid_theta_diff_.computeCommand(left_pos_[1] - right_pos_[1], period);
+  double T_roll = pid_roll_.computeCommand(0. - roll_, period);
   //  double F_length_diff = pid_length_diff_.computeCommand(left_pos_[0] - right_pos_[0], period);
   //  double leg_aver = (left_pos_[0] + right_pos_[0]) / 2;
 
@@ -319,8 +323,8 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   // Leg control
   double gravity = 1. / 2. * body_mass_ * g_;
   Eigen::Matrix<double, 2, 1> F_leg, F_bl;
-  F_leg[0] = pid_left_leg_.computeCommand(leg_length_ - left_pos_[0], period) + gravity * cos(left_pos_[1]);
-  F_leg[1] = pid_right_leg_.computeCommand(leg_length_ - right_pos_[0], period) + gravity * cos(right_pos_[1]);
+  F_leg[0] = pid_left_leg_.computeCommand(leg_length_ - left_pos_[0], period) + gravity * cos(left_pos_[1]) + T_roll;
+  F_leg[1] = pid_right_leg_.computeCommand(leg_length_ - right_pos_[0], period) + gravity * cos(right_pos_[1]) - T_roll;
   F_bl = F_leg;
 
   double left_T[2], right_T[2];
