@@ -299,7 +299,6 @@ void BalanceController::moveJoint(const ros::Time& time, const ros::Duration& pe
 
 void BalanceController::normal(const ros::Time& time, const ros::Duration& period)
 {
-  //  control
   // PID
   double T_yaw = pid_yaw_vel_.computeCommand(vel_cmd_.z - angular_vel_base_.z, period);
   double T_theta_diff = pid_theta_diff_.computeCommand(left_pos_[1] - right_pos_[1], period);
@@ -311,8 +310,6 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   auto x_right = x_right_;
   x_left(3) -= vel_cmd_.x;
   x_right(3) -= vel_cmd_.x;
-  x_left(2) -= vel_cmd_.x * period.toSec();
-  x_right(2) -= vel_cmd_.x * period.toSec();
   u_left = k_ * (-x_left);
   u_right = k_ * (-x_right);
   left_wheel_joint_handle_.setCommand(u_left(0) - T_yaw);
@@ -320,14 +317,13 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
 
   // Leg control
   double gravity = 1. / 2. * body_mass_ * g_;
-  Eigen::Matrix<double, 2, 1> F_leg, F_bl;
+  Eigen::Matrix<double, 2, 1> F_leg;
   F_leg[0] = pid_left_leg_.computeCommand(leg_length_ - left_pos_[0], period) + gravity * cos(left_pos_[1]) + T_roll;
   F_leg[1] = pid_right_leg_.computeCommand(leg_length_ - right_pos_[0], period) + gravity * cos(right_pos_[1]) - T_roll;
-  F_bl = F_leg;
 
   double left_T[2], right_T[2];
-  leg_conv(F_bl[0], u_left(1) - T_theta_diff, left_angle[0], left_angle[1], left_T);
-  leg_conv(F_bl[1], u_right(1) + T_theta_diff, right_angle[0], right_angle[1], right_T);
+  leg_conv(F_leg[0], u_left(1) - T_theta_diff, left_angle[0], left_angle[1], left_T);
+  leg_conv(F_leg[1], u_right(1) + T_theta_diff, right_angle[0], right_angle[1], right_T);
   left_front_leg_joint_handle_.setCommand(left_T[1]);
   right_front_leg_joint_handle_.setCommand(right_T[1]);
   left_back_leg_joint_handle_.setCommand(left_T[0]);
