@@ -131,6 +131,7 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
   }
   L = leg_length_ * L_weight;
   Lm = leg_length_ * Lm_weight;
+  body_mass_ = M;
 
   if (controller_nh.hasParam("pid_yaw_vel"))
     if (!pid_yaw_vel_.init(ros::NodeHandle(controller_nh, "pid_yaw_vel")))
