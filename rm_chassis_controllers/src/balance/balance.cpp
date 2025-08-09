@@ -17,8 +17,6 @@
 #include <rm_msgs/BalanceState.h>
 #include <angles/angles.h>
 
-using vector_t = Eigen::Matrix<double, Eigen::Dynamic, 1>;
-
 namespace rm_chassis_controllers
 {
 bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& root_nh,
@@ -64,6 +62,7 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
   // l is the vertical component of the distance between the wheel center and the center of mass of robot
   //  double m_w, m, i_w, i_m, l, g;
   double L, Lm, l, m_w, m_p, M, i_w, i_p, i_m, g;
+  double L_weight, Lm_weight;
 
   if (!controller_nh.getParam("m_w", m_w))
   {
@@ -100,12 +99,12 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
     ROS_ERROR("Params l doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
     return false;
   }
-  if (!controller_nh.getParam("L", L))
+  if (!controller_nh.getParam("L_weight", L_weight))
   {
     ROS_ERROR("Params l doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
     return false;
   }
-  if (!controller_nh.getParam("Lm", Lm))
+  if (!controller_nh.getParam("Lm_weight", Lm_weight))
   {
     ROS_ERROR("Params l doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
     return false;
@@ -130,8 +129,8 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
     ROS_ERROR("Load param fail, check the resist of vmc_bias_angle");
     return false;
   }
-  L = leg_length_ * 0.25;
-  Lm = leg_length_ * 0.75;
+  L = leg_length_ * L_weight;
+  Lm = leg_length_ * Lm_weight;
 
   if (controller_nh.hasParam("pid_yaw_vel"))
     if (!pid_yaw_vel_.init(ros::NodeHandle(controller_nh, "pid_yaw_vel")))
