@@ -304,8 +304,6 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   double T_yaw = pid_yaw_vel_.computeCommand(vel_cmd_.z - angular_vel_base_.z, period);
   double T_theta_diff = pid_theta_diff_.computeCommand(left_pos_[1] - right_pos_[1], period);
   double T_roll = pid_roll_.computeCommand(0. - roll_, period);
-  //  double F_length_diff = pid_length_diff_.computeCommand(left_pos_[0] - right_pos_[0], period);
-  //  double leg_aver = (left_pos_[0] + right_pos_[0]) / 2;
 
   // LQR
   Eigen::Matrix<double, CONTROL_DIM, 1> u_left, u_right;

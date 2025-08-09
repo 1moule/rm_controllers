@@ -54,7 +54,7 @@ private:
   hardware_interface::JointHandle left_wheel_joint_handle_, right_wheel_joint_handle_, left_front_leg_joint_handle_,
       left_back_leg_joint_handle_, right_front_leg_joint_handle_, right_back_leg_joint_handle_;
 
-  control_toolbox::Pid pid_yaw_vel_, pid_left_leg_, pid_right_leg_, pid_theta_diff_, pid_roll_, pid_center_gravity_;
+  control_toolbox::Pid pid_yaw_vel_, pid_left_leg_, pid_right_leg_, pid_theta_diff_, pid_roll_;
 
   typedef std::shared_ptr<realtime_tools::RealtimePublisher<rm_msgs::BalanceState>> RtpublisherPtr;
   RtpublisherPtr state_pub_;
