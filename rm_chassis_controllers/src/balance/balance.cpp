@@ -125,8 +125,13 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
     ROS_ERROR("Params wheel_radius doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
     return false;
   }
-  L = leg_length_ * 0.75;
-  Lm = leg_length_ * 0.25;
+  if (!controller_nh.getParam("vmc_bias_angle", vmc_bias_angle_))
+  {
+    ROS_ERROR("Load param fail, check the resist of vmc_bias_angle");
+    return false;
+  }
+  L = leg_length_ * 0.25;
+  Lm = leg_length_ * 0.75;
 
   if (controller_nh.hasParam("pid_yaw_vel"))
     if (!pid_yaw_vel_.init(ros::NodeHandle(controller_nh, "pid_yaw_vel")))
@@ -205,7 +210,7 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
   return true;
 }
 
-void BalanceController::moveJoint(const ros::Time& time, const ros::Duration& period)
+void BalanceController::updateEstimation(const ros::Time& time, const ros::Duration& period)
 {
   geometry_msgs::Vector3 gyro;
   gyro.x = imu_handle_.getAngularVelocity()[0];
@@ -233,6 +238,10 @@ void BalanceController::moveJoint(const ros::Time& time, const ros::Duration& pe
     ROS_WARN("%s", ex.what());
     left_wheel_joint_handle_.setCommand(0.);
     right_wheel_joint_handle_.setCommand(0.);
+    left_front_leg_joint_handle_.setCommand(0.);
+    left_back_leg_joint_handle_.setCommand(0.);
+    right_front_leg_joint_handle_.setCommand(0.);
+    right_back_leg_joint_handle_.setCommand(0.);
     return;
   }
   tf2::Quaternion odom2imu_quaternion;
@@ -243,9 +252,36 @@ void BalanceController::moveJoint(const ros::Time& time, const ros::Duration& pe
   odom2imu.setOrigin(odom2imu_origin);
   odom2imu.setRotation(odom2imu_quaternion);
   odom2base = odom2imu * imu2base;
-
   quatToRPY(toMsg(odom2base).rotation, roll_, pitch_, yaw_);
 
+  // vmc
+  // [0]:back_vmc_joint [1]:front_vmc_joint
+  left_angle[0] = vmc_bias_angle_ + left_back_leg_joint_handle_.getPosition();
+  left_angle[1] = left_front_leg_joint_handle_.getPosition() + 3.1415926 - vmc_bias_angle_;
+  right_angle[0] = vmc_bias_angle_ + right_back_leg_joint_handle_.getPosition();
+  right_angle[1] = right_front_leg_joint_handle_.getPosition() + 3.1415926 - vmc_bias_angle_;
+  leg_pos(left_angle[0], left_angle[1], left_pos_);
+  leg_pos(right_angle[0], right_angle[1], right_pos_);
+  leg_spd(left_back_leg_joint_handle_.getVelocity(), left_front_leg_joint_handle_.getVelocity(), left_angle[0],
+          left_angle[1], left_spd_);
+  leg_spd(right_back_leg_joint_handle_.getVelocity(), right_front_leg_joint_handle_.getVelocity(), right_angle[0],
+          right_angle[1], right_spd_);
+
+  // update state
+  x_left_[3] = (joint_handles_[0].getVelocity() + joint_handles_[1].getVelocity()) / 2.0 * wheel_radius_;
+  x_left_[2] += x_left_[3] * period.toSec();
+  x_left_[0] = left_pos_[1] + pitch_;
+  x_left_[1] = left_spd_[1] + angular_vel_base_.y;
+  x_left_[4] = -pitch_;
+  x_left_[5] = -angular_vel_base_.y;
+  x_right_ = x_left_;
+  x_right_[0] = right_pos_[1] + pitch_;
+  x_right_[1] = right_spd_[1] + angular_vel_base_.y;
+}
+
+void BalanceController::moveJoint(const ros::Time& time, const ros::Duration& period)
+{
+  updateEstimation(time, period);
   switch (balance_mode_)
   {
     case BalanceMode::NORMAL:
@@ -259,30 +295,57 @@ void BalanceController::moveJoint(const ros::Time& time, const ros::Duration& pe
 void BalanceController::normal(const ros::Time& time, const ros::Duration& period)
 {
   //  control
-  Eigen::Matrix<double, CONTROL_DIM, 1> u;
-  auto x = x_;
-  u = k_ * (-x);
+  // PID
+  //  double T_theta_diff = pid_theta_diff_.computeCommand(left_pos_[1] - right_pos_[1], period);
+  //  double F_length_diff = pid_length_diff_.computeCommand(left_pos_[0] - right_pos_[0], period);
+  //  double leg_aver = (left_pos_[0] + right_pos_[0]) / 2;
+
+  // LQR
+  Eigen::Matrix<double, CONTROL_DIM, 1> u_left, u_right;
+  auto x_left = x_left_;
+  auto x_right = x_right_;
+  u_left = k_ * (-x_left);
+  u_right = k_ * (-x_right);
+  left_wheel_joint_handle_.setCommand(u_left(0));
+  right_wheel_joint_handle_.setCommand(u_right(0));
+
+  // Leg control
+  Eigen::Matrix<double, 2, 1> F_leg, F_bl;
+  F_leg[0] = pid_left_leg_.computeCommand(leg_length_ - left_pos_[0], period);
+  F_leg[1] = pid_right_leg_.computeCommand(leg_length_ - right_pos_[0], period);
+  F_bl = F_leg;
+
+  double left_T[2], right_T[2];
+  leg_conv(F_bl[0], u_left(1), left_angle[0], left_angle[1], left_T);
+  leg_conv(F_bl[1], u_right(1), right_angle[0], right_angle[1], right_T);
+  left_front_leg_joint_handle_.setCommand(left_T[1]);
+  right_front_leg_joint_handle_.setCommand(right_T[1]);
+  left_back_leg_joint_handle_.setCommand(left_T[0]);
+  right_back_leg_joint_handle_.setCommand(right_T[0]);
 
   if (state_pub_->trylock())
   {
     state_pub_->msg_.header.stamp = time;
-    state_pub_->msg_.theta = x(0);
-    state_pub_->msg_.theta_dot = x(1);
-    state_pub_->msg_.x = x(2);
-    state_pub_->msg_.x_dot = x(3);
-    state_pub_->msg_.phi = x(4);
-    state_pub_->msg_.phi_dot = x(5);
+    state_pub_->msg_.theta = x_left(0);
+    state_pub_->msg_.theta_dot = x_left(1);
+    state_pub_->msg_.x_b_r = x_right(0);
+    state_pub_->msg_.x_b_r_dot = x_right(1);
+    state_pub_->msg_.f_b_l = left_pos_[0];
+    state_pub_->msg_.f_b_r = right_pos_[0];
+    state_pub_->msg_.x = x_left(2);
+    state_pub_->msg_.x_dot = x_left(3);
+    state_pub_->msg_.phi = x_left(4);
+    state_pub_->msg_.phi_dot = x_left(5);
+    state_pub_->msg_.T_l = u_left(1);
+    state_pub_->msg_.T_r = u_right(1);
     state_pub_->unlockAndPublish();
   }
-
-  left_wheel_joint_handle_.setCommand(u(0));
-  right_wheel_joint_handle_.setCommand(u(0));
 }
 
 geometry_msgs::Twist BalanceController::odometry()
 {
   geometry_msgs::Twist twist;
-  twist.linear.x = x_[3];
+  twist.linear.x = x_left_[3];
   return twist;
 }
 }  // namespace rm_chassis_controllers

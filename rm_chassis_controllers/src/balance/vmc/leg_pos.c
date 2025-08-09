@@ -6,7 +6,7 @@
  */
 
 /* Include Files */
-#include "rm_chassis_controllers/vmc/leg_pos.h"
+#include "rm_chassis_controllers/balance/vmc/leg_pos.h"
 #include <math.h>
 
 /* Function Definitions */

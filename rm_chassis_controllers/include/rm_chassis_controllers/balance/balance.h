@@ -39,10 +39,10 @@ private:
   Eigen::Matrix<double, STATE_DIM, STATE_DIM> a_{}, q_{};
   Eigen::Matrix<double, STATE_DIM, CONTROL_DIM> b_{};
   Eigen::Matrix<double, CONTROL_DIM, CONTROL_DIM> r_{};
-  Eigen::Matrix<double, STATE_DIM, 1> x_;
+  Eigen::Matrix<double, STATE_DIM, 1> x_left_, x_right_;
   double vmc_bias_angle_, left_angle[2], right_angle[2], left_pos_[2], left_spd_[2], right_pos_[2], right_spd_[2];
   double wheel_radius_ = 0.06, wheel_track_ = 0.49;
-  double body_mass_ = 11.7, g_ = 9.81;
+  double body_mass_ = 10.717, g_ = 9.81;
   double position_des_ = 0;
   double position_offset_ = 0.;
   double position_clear_threshold_ = 0.;
@@ -56,12 +56,6 @@ private:
 
   control_toolbox::Pid pid_yaw_vel_, pid_left_leg_, pid_right_leg_, pid_theta_diff_, pid_length_diff_, pid_roll_,
       pid_center_gravity_;
-
-  // Slippage_detection
-  Eigen::Matrix<double, 2, 2> A_, B_, H_, Q_, R_;
-  Eigen::Matrix<double, 2, 1> X_, U_;
-  int i_ = 0, sample_times_ = 3;
-  std::shared_ptr<KalmanFilter<double>> kalmanFilterPtr_;
 
   typedef std::shared_ptr<realtime_tools::RealtimePublisher<rm_msgs::BalanceState>> RtpublisherPtr;
   RtpublisherPtr state_pub_;
