@@ -317,9 +317,10 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   right_wheel_joint_handle_.setCommand(u_right(0) + T_yaw);
 
   // Leg control
+  double gravity = 1. / 2. * body_mass_ * g_;
   Eigen::Matrix<double, 2, 1> F_leg, F_bl;
-  F_leg[0] = pid_left_leg_.computeCommand(leg_length_ - left_pos_[0], period);
-  F_leg[1] = pid_right_leg_.computeCommand(leg_length_ - right_pos_[0], period);
+  F_leg[0] = pid_left_leg_.computeCommand(leg_length_ - left_pos_[0], period) + gravity * cos(left_pos_[1]);
+  F_leg[1] = pid_right_leg_.computeCommand(leg_length_ - right_pos_[0], period) + gravity * cos(right_pos_[1]);
   F_bl = F_leg;
 
   double left_T[2], right_T[2];
