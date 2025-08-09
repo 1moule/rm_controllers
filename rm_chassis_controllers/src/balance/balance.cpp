@@ -141,6 +141,9 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
   if (controller_nh.hasParam("pid_right_leg"))
     if (!pid_right_leg_.init(ros::NodeHandle(controller_nh, "pid_right_leg")))
       return false;
+  if (controller_nh.hasParam("pid_theta_diff"))
+    if (!pid_theta_diff_.init(ros::NodeHandle(controller_nh, "pid_theta_diff")))
+      return false;
 
   q_.setZero();
   r_.setZero();
@@ -295,7 +298,8 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
 {
   //  control
   // PID
-  //  double T_theta_diff = pid_theta_diff_.computeCommand(left_pos_[1] - right_pos_[1], period);
+  double T_yaw = pid_yaw_vel_.computeCommand(vel_cmd_.z - angular_vel_base_.z, period);
+  double T_theta_diff = pid_theta_diff_.computeCommand(left_pos_[1] - right_pos_[1], period);
   //  double F_length_diff = pid_length_diff_.computeCommand(left_pos_[0] - right_pos_[0], period);
   //  double leg_aver = (left_pos_[0] + right_pos_[0]) / 2;
 
@@ -303,10 +307,14 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   Eigen::Matrix<double, CONTROL_DIM, 1> u_left, u_right;
   auto x_left = x_left_;
   auto x_right = x_right_;
+  x_left(3) -= vel_cmd_.x;
+  x_right(3) -= vel_cmd_.x;
+  x_left(2) -= vel_cmd_.x * period.toSec();
+  x_right(2) -= vel_cmd_.x * period.toSec();
   u_left = k_ * (-x_left);
   u_right = k_ * (-x_right);
-  left_wheel_joint_handle_.setCommand(u_left(0));
-  right_wheel_joint_handle_.setCommand(u_right(0));
+  left_wheel_joint_handle_.setCommand(u_left(0) - T_yaw);
+  right_wheel_joint_handle_.setCommand(u_right(0) + T_yaw);
 
   // Leg control
   Eigen::Matrix<double, 2, 1> F_leg, F_bl;
@@ -315,8 +323,8 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   F_bl = F_leg;
 
   double left_T[2], right_T[2];
-  leg_conv(F_bl[0], u_left(1), left_angle[0], left_angle[1], left_T);
-  leg_conv(F_bl[1], u_right(1), right_angle[0], right_angle[1], right_T);
+  leg_conv(F_bl[0], u_left(1) - T_theta_diff, left_angle[0], left_angle[1], left_T);
+  leg_conv(F_bl[1], u_right(1) + T_theta_diff, right_angle[0], right_angle[1], right_T);
   left_front_leg_joint_handle_.setCommand(left_T[1]);
   right_front_leg_joint_handle_.setCommand(right_T[1]);
   left_back_leg_joint_handle_.setCommand(left_T[0]);
@@ -327,14 +335,14 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
     state_pub_->msg_.header.stamp = time;
     state_pub_->msg_.theta = x_left(0);
     state_pub_->msg_.theta_dot = x_left(1);
-    state_pub_->msg_.x_b_r = x_right(0);
-    state_pub_->msg_.x_b_r_dot = x_right(1);
-    state_pub_->msg_.f_b_l = left_pos_[0];
-    state_pub_->msg_.f_b_r = right_pos_[0];
     state_pub_->msg_.x = x_left(2);
     state_pub_->msg_.x_dot = x_left(3);
     state_pub_->msg_.phi = x_left(4);
     state_pub_->msg_.phi_dot = x_left(5);
+    state_pub_->msg_.x_b_r = x_right(0);
+    state_pub_->msg_.x_b_r_dot = x_right(1);
+    state_pub_->msg_.f_b_l = left_pos_[0];
+    state_pub_->msg_.f_b_r = right_pos_[0];
     state_pub_->msg_.T_l = u_left(1);
     state_pub_->msg_.T_r = u_right(1);
     state_pub_->unlockAndPublish();
