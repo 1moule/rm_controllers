@@ -51,8 +51,8 @@ private:
   int balance_mode_;
 
   hardware_interface::ImuSensorHandle imu_handle_;
-  hardware_interface::JointHandle left_wheel_joint_handle_, right_wheel_joint_handle_, left_front_leg_joint_handle_,
-      left_back_leg_joint_handle_, right_front_leg_joint_handle_, right_back_leg_joint_handle_;
+  hardware_interface::JointHandle left_wheel_joint_handle_, right_wheel_joint_handle_, left_first_leg_joint_handle_,
+      left_second_leg_joint_handle_, right_first_leg_joint_handle_, right_second_leg_joint_handle_;
 
   control_toolbox::Pid pid_yaw_vel_, pid_left_leg_, pid_right_leg_, pid_theta_diff_, pid_roll_;
 

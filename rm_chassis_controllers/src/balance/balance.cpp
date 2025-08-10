@@ -26,34 +26,34 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
 
   imu_handle_ = robot_hw->get<hardware_interface::ImuSensorInterface>()->getHandle(
       getParam(controller_nh, "imu_name", std::string("base_imu")));
-  std::string left_wheel_joint, right_wheel_joint, left_front_leg_joint, left_back_leg_joint, right_front_leg_joint,
-      right_back_leg_joint;
+  std::string left_wheel_joint, right_wheel_joint, left_first_leg_joint, left_second_leg_joint, right_first_leg_joint,
+      right_second_leg_joint;
   if (!controller_nh.getParam("left/wheel_joint", left_wheel_joint) ||
       !controller_nh.getParam("right/wheel_joint", right_wheel_joint) ||
-      !controller_nh.getParam("left/front_leg_joint", left_front_leg_joint) ||
-      !controller_nh.getParam("right/front_leg_joint", right_front_leg_joint) ||
-      !controller_nh.getParam("left/back_leg_joint", left_back_leg_joint) ||
-      !controller_nh.getParam("right/back_leg_joint", right_back_leg_joint))
+      !controller_nh.getParam("left/first_leg_joint", left_first_leg_joint) ||
+      !controller_nh.getParam("right/first_leg_joint", right_first_leg_joint) ||
+      !controller_nh.getParam("left/second_leg_joint", left_second_leg_joint) ||
+      !controller_nh.getParam("right/second_leg_joint", right_second_leg_joint))
   {
     ROS_ERROR("Some Joints' name doesn't given. (namespace: %s)", controller_nh.getNamespace().c_str());
     return false;
   }
   left_wheel_joint_handle_ = robot_hw->get<hardware_interface::EffortJointInterface>()->getHandle(left_wheel_joint);
   right_wheel_joint_handle_ = robot_hw->get<hardware_interface::EffortJointInterface>()->getHandle(right_wheel_joint);
-  left_front_leg_joint_handle_ =
-      robot_hw->get<hardware_interface::EffortJointInterface>()->getHandle(left_front_leg_joint);
-  right_front_leg_joint_handle_ =
-      robot_hw->get<hardware_interface::EffortJointInterface>()->getHandle(right_front_leg_joint);
-  left_back_leg_joint_handle_ =
-      robot_hw->get<hardware_interface::EffortJointInterface>()->getHandle(left_back_leg_joint);
-  right_back_leg_joint_handle_ =
-      robot_hw->get<hardware_interface::EffortJointInterface>()->getHandle(right_back_leg_joint);
+  left_first_leg_joint_handle_ =
+      robot_hw->get<hardware_interface::EffortJointInterface>()->getHandle(left_first_leg_joint);
+  right_first_leg_joint_handle_ =
+      robot_hw->get<hardware_interface::EffortJointInterface>()->getHandle(right_first_leg_joint);
+  left_second_leg_joint_handle_ =
+      robot_hw->get<hardware_interface::EffortJointInterface>()->getHandle(left_second_leg_joint);
+  right_second_leg_joint_handle_ =
+      robot_hw->get<hardware_interface::EffortJointInterface>()->getHandle(right_second_leg_joint);
   joint_handles_.push_back(left_wheel_joint_handle_);
   joint_handles_.push_back(right_wheel_joint_handle_);
-  joint_handles_.push_back(left_front_leg_joint_handle_);
-  joint_handles_.push_back(right_front_leg_joint_handle_);
-  joint_handles_.push_back(left_back_leg_joint_handle_);
-  joint_handles_.push_back(right_back_leg_joint_handle_);
+  joint_handles_.push_back(left_first_leg_joint_handle_);
+  joint_handles_.push_back(right_first_leg_joint_handle_);
+  joint_handles_.push_back(left_second_leg_joint_handle_);
+  joint_handles_.push_back(right_second_leg_joint_handle_);
 
   // m_w is mass of single wheel
   // m is mass of the robot except wheels and momentum_blocks
@@ -244,10 +244,10 @@ void BalanceController::updateEstimation(const ros::Time& time, const ros::Durat
     ROS_WARN("%s", ex.what());
     left_wheel_joint_handle_.setCommand(0.);
     right_wheel_joint_handle_.setCommand(0.);
-    left_front_leg_joint_handle_.setCommand(0.);
-    left_back_leg_joint_handle_.setCommand(0.);
-    right_front_leg_joint_handle_.setCommand(0.);
-    right_back_leg_joint_handle_.setCommand(0.);
+    left_first_leg_joint_handle_.setCommand(0.);
+    left_second_leg_joint_handle_.setCommand(0.);
+    right_first_leg_joint_handle_.setCommand(0.);
+    right_second_leg_joint_handle_.setCommand(0.);
     return;
   }
   tf2::Quaternion odom2imu_quaternion;
@@ -261,28 +261,35 @@ void BalanceController::updateEstimation(const ros::Time& time, const ros::Durat
   quatToRPY(toMsg(odom2base).rotation, roll_, pitch_, yaw_);
 
   // vmc
-  // [0]:back_vmc_joint [1]:front_vmc_joint
-  left_angle[0] = vmc_bias_angle_ + left_back_leg_joint_handle_.getPosition();
-  left_angle[1] = left_front_leg_joint_handle_.getPosition() + 3.1415926 - vmc_bias_angle_;
-  right_angle[0] = vmc_bias_angle_ + right_back_leg_joint_handle_.getPosition();
-  right_angle[1] = right_front_leg_joint_handle_.getPosition() + 3.1415926 - vmc_bias_angle_;
-  leg_pos(left_angle[0], left_angle[1], left_pos_);
-  leg_pos(right_angle[0], right_angle[1], right_pos_);
-  leg_spd(left_back_leg_joint_handle_.getVelocity(), left_front_leg_joint_handle_.getVelocity(), left_angle[0],
+  // [0]:first_vmc_joint [1]:second_vmc_joint
+  left_angle[0] = left_first_leg_joint_handle_.getPosition() + M_PI / 2.;
+  left_angle[1] = left_second_leg_joint_handle_.getPosition() - M_PI / 4.;
+  right_angle[0] = right_first_leg_joint_handle_.getPosition() + M_PI / 2.;
+  right_angle[1] = right_second_leg_joint_handle_.getPosition() - M_PI / 4.;
+  // [0] is length, [1] is angle
+  double l1 = 0.15, l2 = 0.27;
+  double xc_left = l1 * sin(left_angle[0]) + l2 * sin(left_angle[0] + left_angle[1]);
+  double yc_left = l1 * cos(left_angle[0]) + l2 * cos(left_angle[0] + left_angle[1]);
+  double xc_right = l1 * sin(right_angle[0]) + l2 * sin(right_angle[0] + right_angle[1]);
+  double yc_right = l1 * cos(right_angle[0]) + l2 * cos(right_angle[0] + right_angle[1]);
+  left_pos_[0] = sqrt(xc_left * xc_left + yc_left * yc_left);
+  left_pos_[1] = (atan2(xc_left, yc_left));
+  right_pos_[0] = sqrt(xc_right * xc_right + yc_right * yc_right);
+  right_pos_[1] = (atan2(xc_right, yc_right));
+  leg_spd(left_first_leg_joint_handle_.getVelocity(), left_second_leg_joint_handle_.getVelocity(), left_angle[0],
           left_angle[1], left_spd_);
-  leg_spd(right_back_leg_joint_handle_.getVelocity(), right_front_leg_joint_handle_.getVelocity(), right_angle[0],
+  leg_spd(right_first_leg_joint_handle_.getVelocity(), right_second_leg_joint_handle_.getVelocity(), right_angle[0],
           right_angle[1], right_spd_);
-
   // update state
   x_left_[3] = (joint_handles_[0].getVelocity() + joint_handles_[1].getVelocity()) / 2.0 * wheel_radius_;
-  x_left_[2] += x_left_[3] * period.toSec();
+  x_left_[2] = 0.;
   x_left_[0] = left_pos_[1] + pitch_;
-  x_left_[1] = left_spd_[1] + angular_vel_base_.y;
+  x_left_[1] = -left_spd_[1] + angular_vel_base_.y;
   x_left_[4] = -pitch_;
   x_left_[5] = -angular_vel_base_.y;
   x_right_ = x_left_;
   x_right_[0] = right_pos_[1] + pitch_;
-  x_right_[1] = right_spd_[1] + angular_vel_base_.y;
+  x_right_[1] = -right_spd_[1] + angular_vel_base_.y;
 }
 
 void BalanceController::moveJoint(const ros::Time& time, const ros::Duration& period)
@@ -325,10 +332,10 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   double left_T[2], right_T[2];
   leg_conv(F_leg[0], u_left(1) - T_theta_diff, left_angle[0], left_angle[1], left_T);
   leg_conv(F_leg[1], u_right(1) + T_theta_diff, right_angle[0], right_angle[1], right_T);
-  left_front_leg_joint_handle_.setCommand(left_T[1]);
-  right_front_leg_joint_handle_.setCommand(right_T[1]);
-  left_back_leg_joint_handle_.setCommand(left_T[0]);
-  right_back_leg_joint_handle_.setCommand(right_T[0]);
+  left_first_leg_joint_handle_.setCommand(left_T[0]);
+  right_first_leg_joint_handle_.setCommand(right_T[0]);
+  left_second_leg_joint_handle_.setCommand(left_T[1]);
+  right_second_leg_joint_handle_.setCommand(right_T[1]);
 
   if (state_pub_->trylock())
   {
