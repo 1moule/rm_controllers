@@ -423,9 +423,9 @@ void BalanceController::standUp(const ros::Time& time, const ros::Duration& peri
       case StandUpState::LEG_ROTATE:
       {
         // Rotate the leg to the vertical position
-        left_first_leg_joint_handle_.setCommand(pid_left_leg_vel_.computeCommand(4. - left_spd_[1], period));
+        left_first_leg_joint_handle_.setCommand(pid_left_leg_vel_.computeCommand(-2. - left_spd_[1], period));
         left_second_leg_joint_handle_.setCommand(pid_left_second_leg_pos_.computeCommand(0. - left_pos_[1], period));
-        right_first_leg_joint_handle_.setCommand(pid_right_leg_vel_.computeCommand(4. - right_spd_[1], period));
+        right_first_leg_joint_handle_.setCommand(pid_right_leg_vel_.computeCommand(-2. - right_spd_[1], period));
         right_second_leg_joint_handle_.setCommand(pid_right_second_leg_pos_.computeCommand(0. - right_pos_[1], period));
         if (abs(angles::shortest_angular_distance(x_left_[0], M_PI / 2)) < 0.1)
         {
