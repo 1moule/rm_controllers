@@ -22,6 +22,12 @@ class BalanceController : public ChassisBase<rm_control::RobotStateInterface, ha
   enum BalanceMode
   {
     NORMAL,
+    STAND_UP
+  };
+  enum StandUpState
+  {
+    LEG_ROTATE,
+    LEG_RETRACT,
   };
 
 public:
@@ -32,6 +38,7 @@ private:
   void updateEstimation(const ros::Time& time, const ros::Duration& period);
   void moveJoint(const ros::Time& time, const ros::Duration& period) override;
   void normal(const ros::Time& time, const ros::Duration& period);
+  void standUp(const ros::Time& time, const ros::Duration& period);
   geometry_msgs::Twist odometry() override;
   static const int STATE_DIM = 6;
   static const int CONTROL_DIM = 2;
@@ -41,20 +48,20 @@ private:
   Eigen::Matrix<double, CONTROL_DIM, CONTROL_DIM> r_{};
   Eigen::Matrix<double, STATE_DIM, 1> x_left_, x_right_;
   double vmc_bias_angle_, left_angle[2], right_angle[2], left_pos_[2], left_spd_[2], right_pos_[2], right_spd_[2];
-  double wheel_radius_ = 0.06, wheel_track_ = 0.49;
+  double wheel_radius_ = 0.09;
   double body_mass_ = 10.717, g_ = 9.81;
-  double position_des_ = 0;
-  double position_offset_ = 0.;
-  double position_clear_threshold_ = 0.;
-  double yaw_des_ = 0;
 
-  int balance_mode_;
+  int balance_mode_, stand_up_state_;
+  bool balance_state_changed_ = false;
 
   hardware_interface::ImuSensorHandle imu_handle_;
   hardware_interface::JointHandle left_wheel_joint_handle_, right_wheel_joint_handle_, left_first_leg_joint_handle_,
       left_second_leg_joint_handle_, right_first_leg_joint_handle_, right_second_leg_joint_handle_;
 
   control_toolbox::Pid pid_yaw_vel_, pid_left_leg_, pid_right_leg_, pid_theta_diff_, pid_roll_;
+  control_toolbox::Pid pid_left_leg_vel_, pid_right_leg_vel_, pid_left_first_leg_pos_, pid_left_second_leg_pos_,
+      pid_right_first_leg_pos_, pid_right_second_leg_pos_;
+  double pos_temp_{};
 
   typedef std::shared_ptr<realtime_tools::RealtimePublisher<rm_msgs::BalanceState>> RtpublisherPtr;
   RtpublisherPtr state_pub_;

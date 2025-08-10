@@ -148,6 +148,24 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
   if (controller_nh.hasParam("pid_roll"))
     if (!pid_roll_.init(ros::NodeHandle(controller_nh, "pid_roll")))
       return false;
+  if (controller_nh.hasParam("pid_left_leg_vel"))
+    if (!pid_left_leg_vel_.init(ros::NodeHandle(controller_nh, "pid_left_leg_vel")))
+      return false;
+  if (controller_nh.hasParam("pid_right_leg_vel"))
+    if (!pid_right_leg_vel_.init(ros::NodeHandle(controller_nh, "pid_right_leg_vel")))
+      return false;
+  if (controller_nh.hasParam("pid_left_first_leg_pos"))
+    if (!pid_left_first_leg_pos_.init(ros::NodeHandle(controller_nh, "pid_left_first_leg_pos")))
+      return false;
+  if (controller_nh.hasParam("pid_left_second_leg_pos"))
+    if (!pid_left_second_leg_pos_.init(ros::NodeHandle(controller_nh, "pid_left_second_leg_pos")))
+      return false;
+  if (controller_nh.hasParam("pid_right_first_leg_pos"))
+    if (!pid_right_first_leg_pos_.init(ros::NodeHandle(controller_nh, "pid_right_first_leg_pos")))
+      return false;
+  if (controller_nh.hasParam("pid_right_second_leg_pos"))
+    if (!pid_right_second_leg_pos_.init(ros::NodeHandle(controller_nh, "pid_right_second_leg_pos")))
+      return false;
 
   q_.setZero();
   r_.setZero();
@@ -211,7 +229,8 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
   ROS_INFO_STREAM("K of LQR:" << k_);
 
   state_pub_.reset(new realtime_tools::RealtimePublisher<rm_msgs::BalanceState>(root_nh, "/state", 100));
-  balance_mode_ = BalanceMode::NORMAL;
+  balance_mode_ = BalanceMode::STAND_UP;
+  stand_up_state_ = StandUpState::LEG_ROTATE;
 
   return true;
 }
@@ -302,14 +321,25 @@ void BalanceController::moveJoint(const ros::Time& time, const ros::Duration& pe
       normal(time, period);
       break;
     }
+    case BalanceMode::STAND_UP:
+    {
+      standUp(time, period);
+      break;
+    }
   }
 }
 
 void BalanceController::normal(const ros::Time& time, const ros::Duration& period)
 {
+  if (!balance_state_changed_)
+  {
+    ROS_INFO("[balance] Enter NOMAl");
+    balance_state_changed_ = true;
+  }
+
   // PID
   double T_yaw = pid_yaw_vel_.computeCommand(vel_cmd_.z - angular_vel_base_.z, period);
-  double T_theta_diff = pid_theta_diff_.computeCommand(left_pos_[1] - right_pos_[1], period);
+  //  double T_theta_diff = pid_theta_diff_.computeCommand(left_pos_[1] - right_pos_[1], period);
   double T_roll = pid_roll_.computeCommand(0. - roll_, period);
 
   // LQR
@@ -330,8 +360,8 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   F_leg[1] = pid_right_leg_.computeCommand(leg_length_ - right_pos_[0], period) + gravity * cos(right_pos_[1]) - T_roll;
 
   double left_T[2], right_T[2];
-  leg_conv(F_leg[0], u_left(1) - T_theta_diff, left_angle[0], left_angle[1], left_T);
-  leg_conv(F_leg[1], u_right(1) + T_theta_diff, right_angle[0], right_angle[1], right_T);
+  leg_conv(F_leg[0], -u_left(1), left_angle[0], left_angle[1], left_T);
+  leg_conv(F_leg[1], -u_right(1), right_angle[0], right_angle[1], right_T);
   left_first_leg_joint_handle_.setCommand(left_T[0]);
   right_first_leg_joint_handle_.setCommand(right_T[0]);
   left_second_leg_joint_handle_.setCommand(left_T[1]);
@@ -353,6 +383,51 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
     state_pub_->msg_.T_l = u_left(1);
     state_pub_->msg_.T_r = u_right(1);
     state_pub_->unlockAndPublish();
+  }
+}
+
+void BalanceController::standUp(const ros::Time& time, const ros::Duration& period)
+{
+  if (!balance_state_changed_)
+  {
+    ROS_INFO("[balance] Enter STAND_UP");
+    balance_state_changed_ = true;
+  }
+  switch (stand_up_state_)
+  {
+    case StandUpState::LEG_ROTATE:
+    {
+      // Rotate the leg to the vertical position
+      left_first_leg_joint_handle_.setCommand(pid_left_leg_vel_.computeCommand(4. - left_spd_[1], period));
+      left_second_leg_joint_handle_.setCommand(pid_left_second_leg_pos_.computeCommand(0. - left_pos_[1], period));
+      right_first_leg_joint_handle_.setCommand(pid_right_leg_vel_.computeCommand(4. - right_spd_[1], period));
+      right_second_leg_joint_handle_.setCommand(pid_right_second_leg_pos_.computeCommand(0. - right_pos_[1], period));
+      if (abs(angles::shortest_angular_distance(x_left_[0], M_PI / 2)) < 0.1)
+      {
+        pos_temp_ = left_first_leg_joint_handle_.getPosition();
+        stand_up_state_ = StandUpState::LEG_RETRACT;
+      }
+      break;
+    }
+    case StandUpState::LEG_RETRACT:
+    {
+      // Retract the legs
+      left_first_leg_joint_handle_.setCommand(
+          pid_left_first_leg_pos_.computeCommand(pos_temp_ - left_first_leg_joint_handle_.getPosition(), period));
+      left_second_leg_joint_handle_.setCommand(
+          pid_left_second_leg_pos_.computeCommand(-2. - left_second_leg_joint_handle_.getPosition(), period));
+      right_first_leg_joint_handle_.setCommand(
+          pid_right_first_leg_pos_.computeCommand(pos_temp_ - left_first_leg_joint_handle_.getPosition(), period));
+      right_second_leg_joint_handle_.setCommand(
+          pid_right_second_leg_pos_.computeCommand(-2. - left_second_leg_joint_handle_.getPosition(), period));
+      if (abs(left_pos_[0]) < 0.15)
+      {
+        balance_mode_ = NORMAL;
+        balance_state_changed_ = false;
+        ROS_INFO("[balance] Exit STAND_UP");
+      }
+      break;
+    }
   }
 }
 
