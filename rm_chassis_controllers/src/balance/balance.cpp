@@ -148,23 +148,11 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
   if (controller_nh.hasParam("pid_roll"))
     if (!pid_roll_.init(ros::NodeHandle(controller_nh, "pid_roll")))
       return false;
-  if (controller_nh.hasParam("pid_left_leg_vel"))
-    if (!pid_left_leg_vel_.init(ros::NodeHandle(controller_nh, "pid_left_leg_vel")))
+  if (controller_nh.hasParam("pid_left_leg_theta"))
+    if (!pid_left_leg_theta_.init(ros::NodeHandle(controller_nh, "pid_left_leg_theta")))
       return false;
-  if (controller_nh.hasParam("pid_right_leg_vel"))
-    if (!pid_right_leg_vel_.init(ros::NodeHandle(controller_nh, "pid_right_leg_vel")))
-      return false;
-  if (controller_nh.hasParam("pid_left_first_leg_pos"))
-    if (!pid_left_first_leg_pos_.init(ros::NodeHandle(controller_nh, "pid_left_first_leg_pos")))
-      return false;
-  if (controller_nh.hasParam("pid_left_second_leg_pos"))
-    if (!pid_left_second_leg_pos_.init(ros::NodeHandle(controller_nh, "pid_left_second_leg_pos")))
-      return false;
-  if (controller_nh.hasParam("pid_right_first_leg_pos"))
-    if (!pid_right_first_leg_pos_.init(ros::NodeHandle(controller_nh, "pid_right_first_leg_pos")))
-      return false;
-  if (controller_nh.hasParam("pid_right_second_leg_pos"))
-    if (!pid_right_second_leg_pos_.init(ros::NodeHandle(controller_nh, "pid_right_second_leg_pos")))
+  if (controller_nh.hasParam("pid_right_leg_theta"))
+    if (!pid_right_leg_theta_.init(ros::NodeHandle(controller_nh, "pid_right_leg_theta")))
       return false;
 
   q_.setZero();
@@ -228,7 +216,6 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
 
   state_pub_.reset(new realtime_tools::RealtimePublisher<rm_msgs::BalanceState>(root_nh, "/state", 100));
   balance_mode_ = BalanceMode::STAND_UP;
-  stand_up_state_ = StandUpState::LEG_ROTATE;
 
   return true;
 }
@@ -399,61 +386,30 @@ void BalanceController::standUp(const ros::Time& time, const ros::Duration& peri
     else
       need_rotate_ = true;
   }
-  if (!need_rotate_)
-  {
-    left_first_leg_joint_handle_.setCommand(
-        pid_left_first_leg_pos_.computeCommand(-0.78 - left_first_leg_joint_handle_.getPosition(), period));
-    left_second_leg_joint_handle_.setCommand(
-        pid_left_second_leg_pos_.computeCommand(-2. - left_second_leg_joint_handle_.getPosition(), period));
-    right_first_leg_joint_handle_.setCommand(
-        pid_right_first_leg_pos_.computeCommand(-0.78 - left_first_leg_joint_handle_.getPosition(), period));
-    right_second_leg_joint_handle_.setCommand(
-        pid_right_second_leg_pos_.computeCommand(-2. - left_second_leg_joint_handle_.getPosition(), period));
-    if (left_pos_[1] > 0.)
-    {
-      balance_mode_ = NORMAL;
-      balance_state_changed_ = false;
-      ROS_INFO("[balance] Exit STAND_UP");
-    }
-  }
+  Eigen::Matrix<double, 2, 1> F_leg;
+  F_leg[0] = pid_left_leg_.computeCommand(0.05 - left_pos_[0], period);
+  F_leg[1] = pid_right_leg_.computeCommand(0.05 - right_pos_[0], period);
+  double T_theta_l, T_theta_r, theta_des;
+  if (need_rotate_)
+    theta_des = 0.;
   else
+    theta_des = 0.15;
+  T_theta_l = pid_left_leg_theta_.computeCommand(theta_des - left_pos_[1], period);
+  T_theta_r = pid_right_leg_theta_.computeCommand(theta_des - right_pos_[1], period);
+  double left_T[2], right_T[2];
+  leg_conv(F_leg[0], -T_theta_l, left_angle[0], left_angle[1], left_T);
+  leg_conv(F_leg[1], -T_theta_r, right_angle[0], right_angle[1], right_T);
+  left_first_leg_joint_handle_.setCommand(left_T[0]);
+  right_first_leg_joint_handle_.setCommand(right_T[0]);
+  left_second_leg_joint_handle_.setCommand(left_T[1]);
+  right_second_leg_joint_handle_.setCommand(right_T[1]);
+  left_wheel_joint_handle_.setCommand(0.);
+  right_wheel_joint_handle_.setCommand(0.);
+  if ((left_pos_[1] < 0. && need_rotate_) || (left_pos_[1] > 0. && !need_rotate_))
   {
-    switch (stand_up_state_)
-    {
-      case StandUpState::LEG_ROTATE:
-      {
-        // Rotate the leg to the vertical position
-        left_first_leg_joint_handle_.setCommand(pid_left_leg_vel_.computeCommand(-2. - left_spd_[1], period));
-        left_second_leg_joint_handle_.setCommand(pid_left_second_leg_pos_.computeCommand(0. - left_pos_[1], period));
-        right_first_leg_joint_handle_.setCommand(pid_right_leg_vel_.computeCommand(-2. - right_spd_[1], period));
-        right_second_leg_joint_handle_.setCommand(pid_right_second_leg_pos_.computeCommand(0. - right_pos_[1], period));
-        if (abs(angles::shortest_angular_distance(x_left_[0], M_PI / 2)) < 0.1)
-        {
-          pos_temp_ = left_first_leg_joint_handle_.getPosition();
-          stand_up_state_ = StandUpState::LEG_RETRACT;
-        }
-        break;
-      }
-      case StandUpState::LEG_RETRACT:
-      {
-        // Retract the legs
-        left_first_leg_joint_handle_.setCommand(
-            pid_left_first_leg_pos_.computeCommand(pos_temp_ - left_first_leg_joint_handle_.getPosition(), period));
-        left_second_leg_joint_handle_.setCommand(
-            pid_left_second_leg_pos_.computeCommand(-2. - left_second_leg_joint_handle_.getPosition(), period));
-        right_first_leg_joint_handle_.setCommand(
-            pid_right_first_leg_pos_.computeCommand(pos_temp_ - left_first_leg_joint_handle_.getPosition(), period));
-        right_second_leg_joint_handle_.setCommand(
-            pid_right_second_leg_pos_.computeCommand(-2. - left_second_leg_joint_handle_.getPosition(), period));
-        if (abs(left_pos_[0]) < 0.15)
-        {
-          balance_mode_ = NORMAL;
-          balance_state_changed_ = false;
-          ROS_INFO("[balance] Exit STAND_UP");
-        }
-        break;
-      }
-    }
+    balance_mode_ = NORMAL;
+    balance_state_changed_ = false;
+    ROS_INFO("[balance] Exit STAND_UP");
   }
 }
 
@@ -467,7 +423,6 @@ geometry_msgs::Twist BalanceController::odometry()
 void BalanceController::stopping(const ros::Time& time)
 {
   balance_mode_ = BalanceMode::STAND_UP;
-  stand_up_state_ = LEG_ROTATE;
   balance_state_changed_ = false;
 }
 }  // namespace rm_chassis_controllers

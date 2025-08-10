@@ -24,11 +24,6 @@ class BalanceController : public ChassisBase<rm_control::RobotStateInterface, ha
     NORMAL,
     STAND_UP
   };
-  enum StandUpState
-  {
-    LEG_ROTATE,
-    LEG_RETRACT,
-  };
 
 public:
   BalanceController() = default;
@@ -52,7 +47,7 @@ private:
   double wheel_radius_ = 0.09;
   double body_mass_ = 10.717, g_ = 9.81;
 
-  int balance_mode_, stand_up_state_;
+  int balance_mode_;
   bool balance_state_changed_ = false;
   bool need_rotate_ = false;
 
@@ -61,9 +56,7 @@ private:
       left_second_leg_joint_handle_, right_first_leg_joint_handle_, right_second_leg_joint_handle_;
 
   control_toolbox::Pid pid_yaw_vel_, pid_left_leg_, pid_right_leg_, pid_theta_diff_, pid_roll_;
-  control_toolbox::Pid pid_left_leg_vel_, pid_right_leg_vel_, pid_left_first_leg_pos_, pid_left_second_leg_pos_,
-      pid_right_first_leg_pos_, pid_right_second_leg_pos_;
-  double pos_temp_{};
+  control_toolbox::Pid pid_left_leg_theta_, pid_right_leg_theta_;
 
   typedef std::shared_ptr<realtime_tools::RealtimePublisher<rm_msgs::BalanceState>> RtpublisherPtr;
   RtpublisherPtr state_pub_;
