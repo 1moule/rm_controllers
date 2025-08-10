@@ -33,6 +33,7 @@ class BalanceController : public ChassisBase<rm_control::RobotStateInterface, ha
 public:
   BalanceController() = default;
   bool init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& root_nh, ros::NodeHandle& controller_nh) override;
+  void stopping(const ros::Time& time) override;
 
 private:
   void updateEstimation(const ros::Time& time, const ros::Duration& period);
@@ -53,6 +54,7 @@ private:
 
   int balance_mode_, stand_up_state_;
   bool balance_state_changed_ = false;
+  bool need_rotate_ = false;
 
   hardware_interface::ImuSensorHandle imu_handle_;
   hardware_interface::JointHandle left_wheel_joint_handle_, right_wheel_joint_handle_, left_first_leg_joint_handle_,
