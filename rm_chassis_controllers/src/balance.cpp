@@ -209,7 +209,10 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   x_[0] = pitch_;
   x_[1] = angular_vel_base_.y;
   x_[3] = (left_wheel_joint_handle_.getVelocity() + right_wheel_joint_handle_.getVelocity()) / 2. * wheel_radius_;
-  x_[2] += x_[3] * period.toSec();
+  if (abs(x_[3]) < 0.1)
+    x_[2] += x_[3] * period.toSec();
+  else
+    x_[2] = 0.;
   Eigen::Matrix<double, CONTROL_DIM, 1> u;
   auto x = x_;
   x(3) -= vel_cmd_.x;
