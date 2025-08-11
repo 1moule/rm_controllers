@@ -132,6 +132,7 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
   L = leg_length_ * L_weight;
   Lm = leg_length_ * Lm_weight;
   body_mass_ = M;
+  m_w_ = m_w;
 
   if (controller_nh.hasParam("pid_yaw_vel"))
     if (!pid_yaw_vel_.init(ros::NodeHandle(controller_nh, "pid_yaw_vel")))
@@ -188,8 +189,6 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
       A[3],0.,0.,0.,A[27],0.,
       0.  ,0.,0.,0.,0.   ,1.,
       A[5],0.,0.,0.,A[29],0.;
-  // clang-format on
-  // clang-format off
   b_<<0.  ,0.  ,
       B[1],B[7],
       0.  ,0.  ,
@@ -218,14 +217,18 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
 
 void BalanceController::updateEstimation(const ros::Time& time, const ros::Duration& period)
 {
-  geometry_msgs::Vector3 gyro;
+  geometry_msgs::Vector3 gyro, acc;
   gyro.x = imu_handle_.getAngularVelocity()[0];
   gyro.y = imu_handle_.getAngularVelocity()[1];
   gyro.z = imu_handle_.getAngularVelocity()[2];
+  acc.x = imu_handle_.getLinearAcceleration()[0];
+  acc.y = imu_handle_.getLinearAcceleration()[1];
+  acc.z = imu_handle_.getLinearAcceleration()[2];
   try
   {
     tf2::doTransform(gyro, angular_vel_base_,
                      robot_state_handle_.lookupTransform("base_link", imu_handle_.getFrameId(), time));
+    tf2::doTransform(acc, linear_acc_base_, robot_state_handle_.lookupTransform("odom", imu_handle_.getFrameId(), time));
   }
   catch (tf2::TransformException& ex)
   {
@@ -288,6 +291,20 @@ void BalanceController::updateEstimation(const ros::Time& time, const ros::Durat
   x_right_[1] = right_spd_[1] + angular_vel_base_.y;
 }
 
+double BalanceController::unstickDetection(const ros::Time& time, const ros::Duration& period, double F, double Tp,
+                                           Eigen::Matrix<double, STATE_DIM, 1> x,
+                                           Eigen::Matrix<double, CONTROL_DIM, 1> u)
+{
+  double P = F * cos(x(0)) + Tp * sin(x(0)) / leg_length_;
+  double ddot_zM = linear_acc_base_.z - g_;
+  auto ddot_x = a_ * x + b_ * u;
+  double ddot_theta = ddot_x(1);
+  double ddot_zw = ddot_zM - leg_length_ * cos(x(0)) + 2 * leg_length_ * x(1) * sin(x(0)) +
+                   +leg_length_ * (ddot_theta * sin(x(0)) + x(1) * x(1) * cos(x(0)));
+  double Fn = m_w_ * ddot_zw + m_w_ * g_ + P;
+  return Fn;
+}
+
 void BalanceController::moveJoint(const ros::Time& time, const ros::Duration& period)
 {
   updateEstimation(time, period);
@@ -316,8 +333,6 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   x_right(3) -= vel_cmd_.x;
   u_left = k_ * (-x_left);
   u_right = k_ * (-x_right);
-  left_wheel_joint_handle_.setCommand(u_left(0) - T_yaw);
-  right_wheel_joint_handle_.setCommand(u_right(0) + T_yaw);
 
   // Leg control
   double gravity = 1. / 2. * body_mass_ * g_;
@@ -328,6 +343,27 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   double left_T[2], right_T[2];
   leg_conv(F_leg[0], u_left(1) - T_theta_diff, left_angle[0], left_angle[1], left_T);
   leg_conv(F_leg[1], u_right(1) + T_theta_diff, right_angle[0], right_angle[1], right_T);
+
+  // Unstick detection
+  double Fn_left = unstickDetection(time, period, F_leg[0], u_left(1) - T_theta_diff, x_left_, u_left);
+  double Fn_right = unstickDetection(time, period, F_leg[1], u_right(1) + T_theta_diff, x_right_, u_right);
+  Eigen::Matrix<double, CONTROL_DIM, STATE_DIM> k{};
+  k.setZero();
+  k(1, 0) = k_(1, 0);
+  k(1, 1) = k_(1, 1);
+  if (Fn_left < 10.)
+  {
+    u_left = k * (-x_left);
+    leg_conv(0., u_left(1) - T_theta_diff, left_angle[0], left_angle[1], left_T);
+  }
+  if (Fn_right < 10.)
+  {
+    u_right = k * (-x_right);
+    leg_conv(0., u_right(1) + T_theta_diff, right_angle[0], right_angle[1], right_T);
+  }
+
+  left_wheel_joint_handle_.setCommand(u_left(0) - T_yaw);
+  right_wheel_joint_handle_.setCommand(u_right(0) + T_yaw);
   left_front_leg_joint_handle_.setCommand(left_T[1]);
   right_front_leg_joint_handle_.setCommand(right_T[1]);
   left_back_leg_joint_handle_.setCommand(left_T[0]);
