@@ -8,13 +8,13 @@
 #include "rm_chassis_controllers/balance/gen_A.h"
 #include "rm_chassis_controllers/balance/gen_B.h"
 
-#include <unsupported/Eigen/MatrixFunctions>
-#include "rm_common/ros_utilities.h"
-#include "rm_common/ori_tool.h"
+#include <rm_common/ros_utilities.h>
+#include <rm_common/ori_tool.h>
+#include <rm_msgs/BalanceState.h>
 #include <geometry_msgs/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <pluginlib/class_list_macros.hpp>
-#include <rm_msgs/BalanceState.h>
+#include <unsupported/Eigen/MatrixFunctions>
 #include <angles/angles.h>
 
 namespace rm_chassis_controllers
@@ -347,7 +347,6 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   Eigen::Matrix<double, 2, 1> F_leg;
   F_leg[0] = pid_left_leg_.computeCommand(leg_length_ - left_pos_[0], period) + gravity * cos(left_pos_[1]) + T_roll;
   F_leg[1] = pid_right_leg_.computeCommand(leg_length_ - right_pos_[0], period) + gravity * cos(right_pos_[1]) - T_roll;
-
   double left_T[2], right_T[2];
   leg_conv(F_leg[0], -u_left(1) + T_theta_diff, left_angle[0], left_angle[1], left_T);
   leg_conv(F_leg[1], -u_right(1) - T_theta_diff, right_angle[0], right_angle[1], right_T);
