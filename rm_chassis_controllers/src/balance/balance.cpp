@@ -394,12 +394,12 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   if (Fn_left < 10. && complete_stand_)
   {
     u_left = k * (-x_left);
-    leg_conv(0., -u_left(1), left_angle[0], left_angle[1], left_T);
+    leg_conv(0., -u_left(1) + T_theta_diff, left_angle[0], left_angle[1], left_T);
   }
   if (Fn_right < 10. && complete_stand_)
   {
     u_right = k * (-x_right);
-    leg_conv(0., -u_right(1), right_angle[0], right_angle[1], right_T);
+    leg_conv(0., -u_right(1) - T_theta_diff, right_angle[0], right_angle[1], right_T);
   }
 
   // control
