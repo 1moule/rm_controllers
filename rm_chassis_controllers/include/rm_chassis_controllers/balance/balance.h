@@ -4,14 +4,15 @@
 
 #pragma once
 
-#include "rm_common/lqr.h"
+#include <rm_common/lqr.h>
 #include <controller_interface/multi_interface_controller.h>
 #include <hardware_interface/imu_sensor_interface.h>
 #include <hardware_interface/joint_command_interface.h>
 #include <rm_msgs/BalanceState.h>
-#include "rm_common/filters/kalman_filter.h"
+#include <rm_common/filters/kalman_filter.h>
+#include <rm_common/filters/filters.h>
 
-#include "../chassis_base.h"
+#include "rm_chassis_controllers/chassis_base.h"
 
 namespace rm_chassis_controllers
 {
@@ -22,7 +23,8 @@ class BalanceController : public ChassisBase<rm_control::RobotStateInterface, ha
   enum BalanceMode
   {
     NORMAL,
-    STAND_UP
+    STAND_UP,
+    SIT_DOWN,
   };
 
 public:
@@ -31,13 +33,16 @@ public:
   void stopping(const ros::Time& time) override;
 
 private:
+  static const int STATE_DIM = 6;
+  static const int CONTROL_DIM = 2;
   void updateEstimation(const ros::Time& time, const ros::Duration& period);
+  double unstickDetection(const ros::Time& time, const ros::Duration& period, double F, double Tp,
+                          Eigen::Matrix<double, STATE_DIM, 1> x, Eigen::Matrix<double, CONTROL_DIM, 1> u);
   void moveJoint(const ros::Time& time, const ros::Duration& period) override;
   void normal(const ros::Time& time, const ros::Duration& period);
   void standUp(const ros::Time& time, const ros::Duration& period);
+  void sitDown(const ros::Time& time, const ros::Duration& period);
   geometry_msgs::Twist odometry() override;
-  static const int STATE_DIM = 6;
-  static const int CONTROL_DIM = 2;
   Eigen::Matrix<double, CONTROL_DIM, STATE_DIM> k_{};
   Eigen::Matrix<double, STATE_DIM, STATE_DIM> a_{}, q_{};
   Eigen::Matrix<double, STATE_DIM, CONTROL_DIM> b_{};
@@ -45,11 +50,12 @@ private:
   Eigen::Matrix<double, STATE_DIM, 1> x_left_, x_right_;
   double vmc_bias_angle_, left_angle[2], right_angle[2], left_pos_[2], left_spd_[2], right_pos_[2], right_spd_[2];
   double wheel_radius_ = 0.09;
-  double body_mass_ = 10.717, g_ = 9.81;
+  double body_mass_ = 10.717, g_ = 9.81, m_w_;
 
   int balance_mode_;
   bool balance_state_changed_ = false;
   bool need_rotate_ = false;
+  bool complete_stand_ = false;
 
   hardware_interface::ImuSensorHandle imu_handle_;
   hardware_interface::JointHandle left_wheel_joint_handle_, right_wheel_joint_handle_, left_first_leg_joint_handle_,
@@ -60,7 +66,7 @@ private:
 
   typedef std::shared_ptr<realtime_tools::RealtimePublisher<rm_msgs::BalanceState>> RtpublisherPtr;
   RtpublisherPtr state_pub_;
-  geometry_msgs::Vector3 angular_vel_base_;
+  geometry_msgs::Vector3 angular_vel_base_, linear_acc_base_;
   double roll_, pitch_, yaw_;
   double leg_length_;
 };

@@ -69,6 +69,7 @@ add_library(${PROJECT_NAME}
         src/sentry.cpp
         src/swerve.cpp
         src/balance/balance.cpp
+        src/balance/vmc/leg_conv_fwd.c
         src/balance/vmc/leg_conv.c
         src/balance/vmc/leg_pos.c
         src/balance/vmc/leg_spd.c
