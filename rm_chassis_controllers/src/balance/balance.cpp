@@ -210,6 +210,16 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
   ROS_INFO_STREAM("K of LQR:" << k_);
 
   state_pub_.reset(new realtime_tools::RealtimePublisher<rm_msgs::BalanceState>(root_nh, "/state", 100));
+  auto legCmdCallback = [this](const rm_msgs::LegCmdConstPtr& msg) {
+    legCmd_.leg_length = msg->leg_length;
+    if (msg->jump)
+    {
+      ROS_INFO("[balance] Jump start");
+      legCmd_.jump = true;
+    }
+  };
+  leg_cmd_sub_ = controller_nh.subscribe<rm_msgs::LegCmd>("/leg_command", 1, legCmdCallback);
+
   balance_mode_ = BalanceMode::NORMAL;
 
   return true;
@@ -337,9 +347,40 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   // Leg control
   double gravity = 1. / 2. * body_mass_ * g_;
   Eigen::Matrix<double, 2, 1> F_leg;
-  F_leg[0] = pid_left_leg_.computeCommand(leg_length_ - left_pos_[0], period) + gravity * cos(left_pos_[1]) + T_roll;
-  F_leg[1] = pid_right_leg_.computeCommand(leg_length_ - right_pos_[0], period) + gravity * cos(right_pos_[1]) - T_roll;
-
+  double leg_length_des = leg_length_;
+  if (legCmd_.jump)
+  {
+    if (!complete_first_shrink_)
+      leg_length_des = 0.1;
+    if (!complete_first_shrink_ && abs(0.1 - left_pos_[0]) < 0.02)
+      complete_first_shrink_ = true;
+    if (complete_first_shrink_ && !complete_elongation_)
+      leg_length_des = 0.35;
+    if (complete_first_shrink_ && !complete_elongation_ && abs(0.35 - left_pos_[0]) < 0.02)
+      complete_elongation_ = true;
+    if (complete_elongation_ && !complete_second_shrink_)
+      leg_length_des = 0.1;
+    if (complete_elongation_ && !complete_second_shrink_ && abs(0.1 - left_pos_[0]) < 0.02)
+      complete_second_shrink_ = true;
+    if (complete_second_shrink_)
+    {
+      complete_first_shrink_ = false;
+      complete_elongation_ = false;
+      complete_second_shrink_ = false;
+      legCmd_.jump = false;
+      ROS_INFO("[balance] Jump finished");
+    }
+    F_leg[0] =
+        pid_left_leg_.computeCommand(leg_length_des - left_pos_[0], period) + gravity * cos(left_pos_[1]) + T_roll;
+    F_leg[1] =
+        pid_right_leg_.computeCommand(leg_length_des - right_pos_[0], period) + gravity * cos(right_pos_[1]) - T_roll;
+  }
+  else
+  {
+    F_leg[0] = pid_left_leg_.computeCommand(leg_length_ - left_pos_[0], period) + gravity * cos(left_pos_[1]) + T_roll;
+    F_leg[1] =
+        pid_right_leg_.computeCommand(leg_length_ - right_pos_[0], period) + gravity * cos(right_pos_[1]) - T_roll;
+  }
   double left_T[2], right_T[2];
   leg_conv(F_leg[0], u_left(1) - T_theta_diff, left_angle[0], left_angle[1], left_T);
   leg_conv(F_leg[1], u_right(1) + T_theta_diff, right_angle[0], right_angle[1], right_T);
@@ -351,12 +392,12 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   k.setZero();
   k(1, 0) = k_(1, 0);
   k(1, 1) = k_(1, 1);
-  if (Fn_left < 10.)
+  if (Fn_left < 10. && !legCmd_.jump)
   {
     u_left = k * (-x_left);
     leg_conv(0., u_left(1) - T_theta_diff, left_angle[0], left_angle[1], left_T);
   }
-  if (Fn_right < 10.)
+  if (Fn_right < 10. && !legCmd_.jump)
   {
     u_right = k * (-x_right);
     leg_conv(0., u_right(1) + T_theta_diff, right_angle[0], right_angle[1], right_T);

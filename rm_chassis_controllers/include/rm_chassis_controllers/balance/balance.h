@@ -9,6 +9,7 @@
 #include <hardware_interface/imu_sensor_interface.h>
 #include <hardware_interface/joint_command_interface.h>
 #include <rm_msgs/BalanceState.h>
+#include <rm_msgs/LegCmd.h>
 #include "rm_common/filters/kalman_filter.h"
 
 #include "../chassis_base.h"
@@ -52,6 +53,9 @@ private:
 
   int balance_mode_;
 
+  // jump
+  bool complete_first_shrink_ = false, complete_elongation_ = false, complete_second_shrink_ = false;
+
   hardware_interface::ImuSensorHandle imu_handle_;
   hardware_interface::JointHandle left_wheel_joint_handle_, right_wheel_joint_handle_, left_front_leg_joint_handle_,
       left_back_leg_joint_handle_, right_front_leg_joint_handle_, right_back_leg_joint_handle_;
@@ -60,6 +64,8 @@ private:
 
   typedef std::shared_ptr<realtime_tools::RealtimePublisher<rm_msgs::BalanceState>> RtpublisherPtr;
   RtpublisherPtr state_pub_;
+  ros::Subscriber leg_cmd_sub_;
+  rm_msgs::LegCmd legCmd_;
   geometry_msgs::Vector3 angular_vel_base_, linear_acc_base_;
   double roll_, pitch_, yaw_;
   double leg_length_;
