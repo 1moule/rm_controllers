@@ -293,7 +293,7 @@ void BalanceController::updateEstimation(const ros::Time& time, const ros::Durat
 
   // update state
   x_left_[3] = (joint_handles_[0].getVelocity() + joint_handles_[1].getVelocity()) / 2.0 * wheel_radius_;
-  if (abs(x_left_[3]) < 0.1)
+  if (abs(x_left_[3]) < 0.2 && vel_cmd_.x == 0.)
     x_left_[2] += x_left_[3] * period.toSec();
   else
     x_left_[2] = 0.;
