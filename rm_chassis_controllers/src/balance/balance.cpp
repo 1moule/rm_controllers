@@ -314,6 +314,20 @@ void BalanceController::updateEstimation(const ros::Time& time, const ros::Durat
   x_right_ = x_left_;
   x_right_[0] = right_pos_[1] + pitch_;
   x_right_[1] = -right_spd_[1] + angular_vel_base_.y;
+
+  if (state_pub_->trylock())
+  {
+    state_pub_->msg_.header.stamp = time;
+    state_pub_->msg_.theta = x_left_(0);
+    state_pub_->msg_.theta_dot = x_left_(1);
+    state_pub_->msg_.x = x_left_(2);
+    state_pub_->msg_.x_dot = x_left_(3);
+    state_pub_->msg_.phi = x_left_(4);
+    state_pub_->msg_.phi_dot = x_left_(5);
+    state_pub_->msg_.x_b_r = x_right_(0);
+    state_pub_->msg_.x_b_r_dot = x_right_(1);
+    state_pub_->unlockAndPublish();
+  }
 }
 
 double BalanceController::unstickDetection(const ros::Time& time, const ros::Duration& period, double F, double Tp,
@@ -460,24 +474,6 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
     left_second_leg_joint_handle_.setCommand(left_T[1]);
     right_second_leg_joint_handle_.setCommand(right_T[1]);
   }
-
-  if (state_pub_->trylock())
-  {
-    state_pub_->msg_.header.stamp = time;
-    state_pub_->msg_.theta = x_left(0);
-    state_pub_->msg_.theta_dot = x_left(1);
-    state_pub_->msg_.x = x_left(2);
-    state_pub_->msg_.x_dot = x_left(3);
-    state_pub_->msg_.phi = x_left(4);
-    state_pub_->msg_.phi_dot = x_left(5);
-    state_pub_->msg_.x_b_r = x_right(0);
-    state_pub_->msg_.x_b_r_dot = x_right(1);
-    state_pub_->msg_.f_b_l = Fn_left;
-    state_pub_->msg_.f_b_r = Fn_right;
-    state_pub_->msg_.T_l = left_F[0];
-    state_pub_->msg_.T_r = left_F[1];
-    state_pub_->unlockAndPublish();
-  }
 }
 
 void BalanceController::standUp(const ros::Time& time, const ros::Duration& period)
@@ -487,21 +483,42 @@ void BalanceController::standUp(const ros::Time& time, const ros::Duration& peri
     ROS_INFO("[balance] Enter STAND_UP");
     balance_state_changed_ = true;
     complete_stand_ = false;
+    leg_under_body_ = false;
+    leg_front_body_ = false;
+    leg_behind_body_ = false;
     if (x_left_[0] > -M_PI / 2 + 0.1 && x_left_[0] < M_PI / 2 - 0.1)
-      need_rotate_ = false;
-    else
-      need_rotate_ = true;
+      leg_under_body_ = true;
+    else if (x_left_[0] < -M_PI / 2 + 0.1 && x_left_[0] > -M_PI)
+      leg_front_body_ = true;
+    else if (x_left_[0] > M_PI / 2 - 0.1 && x_left_[0] < M_PI)
+      leg_behind_body_ = true;
   }
   Eigen::Matrix<double, 2, 1> F_leg;
-  F_leg[0] = pid_left_leg_.computeCommand(0.05 - left_pos_[0], period);
-  F_leg[1] = pid_right_leg_.computeCommand(0.05 - right_pos_[0], period);
-  double T_theta_l, T_theta_r, theta_des;
-  if (need_rotate_)
+  double T_theta_l, T_theta_r, theta_des, length_des;
+  if (leg_behind_body_)
+  {
     theta_des = 0.;
-  else
+    length_des = 0.05;
+  }
+  else if (leg_under_body_)
+  {
     theta_des = 0.15;
-  T_theta_l = pid_left_leg_theta_.computeCommand(theta_des - left_pos_[1], period);
-  T_theta_r = pid_right_leg_theta_.computeCommand(theta_des - right_pos_[1], period);
+    length_des = 0.05;
+  }
+  else
+  {
+    theta_des = M_PI / 2;
+    length_des = 0.4;
+    if (abs(angles::shortest_angular_distance(x_left_[0], M_PI / 2)) < 0.1)
+    {
+      leg_behind_body_ = true;
+      leg_front_body_ = false;
+    }
+  }
+  F_leg[0] = pid_left_leg_.computeCommand(length_des - left_pos_[0], period);
+  F_leg[1] = pid_right_leg_.computeCommand(length_des - right_pos_[0], period);
+  T_theta_l = pid_left_leg_theta_.computeCommand(-angles::shortest_angular_distance(theta_des, left_pos_[1]), period);
+  T_theta_r = pid_right_leg_theta_.computeCommand(-angles::shortest_angular_distance(theta_des, right_pos_[1]), period);
   double left_T[2], right_T[2];
   leg_conv(F_leg[0], -T_theta_l, left_angle[0], left_angle[1], left_T);
   leg_conv(F_leg[1], -T_theta_r, right_angle[0], right_angle[1], right_T);
@@ -511,7 +528,7 @@ void BalanceController::standUp(const ros::Time& time, const ros::Duration& peri
   right_second_leg_joint_handle_.setCommand(right_T[1]);
   left_wheel_joint_handle_.setCommand(0.);
   right_wheel_joint_handle_.setCommand(0.);
-  if ((left_pos_[1] < 0. && need_rotate_) || (left_pos_[1] > 0. && !need_rotate_))
+  if ((left_pos_[1] < 0. && leg_behind_body_) || (left_pos_[1] > 0. && leg_under_body_))
   {
     balance_mode_ = NORMAL;
     balance_state_changed_ = false;

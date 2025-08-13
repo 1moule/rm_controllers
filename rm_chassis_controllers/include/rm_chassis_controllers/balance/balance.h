@@ -55,8 +55,9 @@ private:
 
   int balance_mode_;
   bool balance_state_changed_ = false;
-  bool need_rotate_ = false;
-  bool complete_stand_ = false;
+
+  // stand up
+  bool leg_under_body_ = false, leg_front_body_ = false, leg_behind_body_ = false, complete_stand_ = false;
 
   // jump
   bool complete_first_shrink_ = false, complete_elongation_ = false, complete_second_shrink_ = false;
