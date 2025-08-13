@@ -476,6 +476,44 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   }
 }
 
+void BalanceController::detectLegState(const Eigen::Matrix<double, STATE_DIM, 1>& x, LegState& leg_state)
+{
+  if (x[0] > -M_PI / 2 + 0.1 && x[0] < M_PI / 2 - 0.1)
+    leg_state = LegState::UNDER;
+  else if (x[0] < -M_PI / 2 + 0.1 && x[0] > -M_PI)
+    leg_state = LegState::FRONT;
+  else if (x[0] > M_PI / 2 - 0.1 && x[0] < M_PI)
+    leg_state = LegState::BEHIND;
+}
+
+void BalanceController::setUpLegMotion(const Eigen::Matrix<double, STATE_DIM, 1>& x, const LegState& other_leg_state,
+                                       const double& leg_length, const double& leg_theta, LegState& leg_state,
+                                       double& theta_des, double& length_des)
+{
+  switch (leg_state)
+  {
+    case LegState::UNDER:
+      theta_des = 0.15;
+      length_des = 0.05;
+      break;
+    case LegState::FRONT:
+      theta_des = M_PI / 2;
+      length_des = 0.4;
+      if (abs(angles::shortest_angular_distance(x[0], M_PI / 2)) < 0.1 && (other_leg_state != LegState::FRONT))
+        leg_state = LegState::BEHIND;
+      break;
+    case LegState::BEHIND:
+      theta_des = leg_theta;
+      length_des = leg_length;
+      if (other_leg_state != LegState::FRONT)
+      {
+        theta_des = 0.;
+        length_des = 0.05;
+      }
+      break;
+  }
+}
+
 void BalanceController::standUp(const ros::Time& time, const ros::Duration& period)
 {
   if (!balance_state_changed_)
@@ -483,42 +521,18 @@ void BalanceController::standUp(const ros::Time& time, const ros::Duration& peri
     ROS_INFO("[balance] Enter STAND_UP");
     balance_state_changed_ = true;
     complete_stand_ = false;
-    leg_under_body_ = false;
-    leg_front_body_ = false;
-    leg_behind_body_ = false;
-    if (x_left_[0] > -M_PI / 2 + 0.1 && x_left_[0] < M_PI / 2 - 0.1)
-      leg_under_body_ = true;
-    else if (x_left_[0] < -M_PI / 2 + 0.1 && x_left_[0] > -M_PI)
-      leg_front_body_ = true;
-    else if (x_left_[0] > M_PI / 2 - 0.1 && x_left_[0] < M_PI)
-      leg_behind_body_ = true;
+    detectLegState(x_left_, left_leg_state);
+    detectLegState(x_right_, right_leg_state);
   }
   Eigen::Matrix<double, 2, 1> F_leg;
-  double T_theta_l, T_theta_r, theta_des, length_des;
-  if (leg_behind_body_)
-  {
-    theta_des = 0.;
-    length_des = 0.05;
-  }
-  else if (leg_under_body_)
-  {
-    theta_des = 0.15;
-    length_des = 0.05;
-  }
-  else
-  {
-    theta_des = M_PI / 2;
-    length_des = 0.4;
-    if (abs(angles::shortest_angular_distance(x_left_[0], M_PI / 2)) < 0.1)
-    {
-      leg_behind_body_ = true;
-      leg_front_body_ = false;
-    }
-  }
-  F_leg[0] = pid_left_leg_.computeCommand(length_des - left_pos_[0], period);
-  F_leg[1] = pid_right_leg_.computeCommand(length_des - right_pos_[0], period);
-  T_theta_l = pid_left_leg_theta_.computeCommand(-angles::shortest_angular_distance(theta_des, left_pos_[1]), period);
-  T_theta_r = pid_right_leg_theta_.computeCommand(-angles::shortest_angular_distance(theta_des, right_pos_[1]), period);
+  double T_theta_l, T_theta_r, theta_des_l, theta_des_r, length_des_l, length_des_r;
+  setUpLegMotion(x_left_, right_leg_state, left_pos_[0], left_pos_[1], left_leg_state, theta_des_l, length_des_l);
+  setUpLegMotion(x_right_, left_leg_state, right_pos_[0], right_pos_[1], right_leg_state, theta_des_r, length_des_r);
+  F_leg[0] = pid_left_leg_.computeCommand(length_des_l - left_pos_[0], period);
+  F_leg[1] = pid_right_leg_.computeCommand(length_des_r - right_pos_[0], period);
+  T_theta_l = pid_left_leg_theta_.computeCommand(-angles::shortest_angular_distance(theta_des_l, left_pos_[1]), period);
+  T_theta_r =
+      pid_right_leg_theta_.computeCommand(-angles::shortest_angular_distance(theta_des_r, right_pos_[1]), period);
   double left_T[2], right_T[2];
   leg_conv(F_leg[0], -T_theta_l, left_angle[0], left_angle[1], left_T);
   leg_conv(F_leg[1], -T_theta_r, right_angle[0], right_angle[1], right_T);
@@ -528,7 +542,10 @@ void BalanceController::standUp(const ros::Time& time, const ros::Duration& peri
   right_second_leg_joint_handle_.setCommand(right_T[1]);
   left_wheel_joint_handle_.setCommand(0.);
   right_wheel_joint_handle_.setCommand(0.);
-  if ((left_pos_[1] < 0. && leg_behind_body_) || (left_pos_[1] > 0. && leg_under_body_))
+  if (((left_pos_[1] < 0. && left_leg_state == LegState::BEHIND) ||
+       (left_pos_[1] > 0. && left_leg_state == LegState::UNDER)) &&
+      ((right_pos_[1] < 0. && right_leg_state == LegState::BEHIND) ||
+       (right_pos_[1] > 0. && right_leg_state == LegState::UNDER)))
   {
     balance_mode_ = NORMAL;
     balance_state_changed_ = false;

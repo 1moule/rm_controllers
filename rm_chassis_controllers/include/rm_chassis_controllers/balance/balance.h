@@ -27,6 +27,13 @@ class BalanceController : public ChassisBase<rm_control::RobotStateInterface, ha
     STAND_UP,
     SIT_DOWN,
   };
+  enum LegState
+  {
+    UNDER,
+    FRONT,
+    BEHIND,
+  } left_leg_state,
+      right_leg_state;
 
 public:
   BalanceController() = default;
@@ -36,9 +43,13 @@ public:
 private:
   static const int STATE_DIM = 6;
   static const int CONTROL_DIM = 2;
-  void updateEstimation(const ros::Time& time, const ros::Duration& period);
   double unstickDetection(const ros::Time& time, const ros::Duration& period, double F, double Tp,
                           Eigen::Matrix<double, STATE_DIM, 1> x, Eigen::Matrix<double, CONTROL_DIM, 1> u);
+  void updateEstimation(const ros::Time& time, const ros::Duration& period);
+  void detectLegState(const Eigen::Matrix<double, STATE_DIM, 1>& x, LegState& leg_state);
+  void setUpLegMotion(const Eigen::Matrix<double, STATE_DIM, 1>& x, const LegState& other_leg_state,
+                      const double& leg_length, const double& leg_theta, LegState& leg_state, double& theta_des,
+                      double& length_des);
   void moveJoint(const ros::Time& time, const ros::Duration& period) override;
   void normal(const ros::Time& time, const ros::Duration& period);
   void standUp(const ros::Time& time, const ros::Duration& period);
