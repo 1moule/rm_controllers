@@ -499,7 +499,7 @@ void BalanceController::setUpLegMotion(const Eigen::Matrix<double, STATE_DIM, 1>
     case LegState::FRONT:
       theta_des = M_PI / 2;
       length_des = 0.4;
-      if (abs(angles::shortest_angular_distance(x[0], M_PI / 2)) < 0.1 && (other_leg_state != LegState::FRONT))
+      if (abs(angles::shortest_angular_distance(x[0], M_PI / 2)) < 0.2)
         leg_state = LegState::BEHIND;
       break;
     case LegState::BEHIND:
