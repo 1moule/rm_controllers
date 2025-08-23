@@ -79,6 +79,7 @@ private:
 
   control_toolbox::Pid pid_yaw_vel_, pid_left_leg_, pid_right_leg_, pid_theta_diff_, pid_roll_;
   control_toolbox::Pid pid_left_leg_theta_, pid_right_leg_theta_;
+  control_toolbox::Pid pid_left_wheel_vel_, pid_right_wheel_vel_;
 
   typedef std::shared_ptr<realtime_tools::RealtimePublisher<rm_msgs::BalanceState>> RtpublisherPtr;
   RtpublisherPtr state_pub_;

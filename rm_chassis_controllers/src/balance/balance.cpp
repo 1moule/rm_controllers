@@ -156,6 +156,12 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
   if (controller_nh.hasParam("pid_right_leg_theta"))
     if (!pid_right_leg_theta_.init(ros::NodeHandle(controller_nh, "pid_right_leg_theta")))
       return false;
+  if (controller_nh.hasParam("pid_left_wheel_vel"))
+    if (!pid_left_wheel_vel_.init(ros::NodeHandle(controller_nh, "pid_left_wheel_vel")))
+      return false;
+  if (controller_nh.hasParam("pid_right_wheel_vel"))
+    if (!pid_right_wheel_vel_.init(ros::NodeHandle(controller_nh, "pid_right_wheel_vel")))
+      return false;
 
   q_.setZero();
   r_.setZero();
@@ -424,9 +430,12 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   }
   else
   {
-    F_leg[0] = pid_left_leg_.computeCommand(leg_length_ - left_pos_[0], period) + gravity * cos(left_pos_[1]) + T_roll;
+    double left_length_des = complete_stand_ ? leg_length_ / cos(x_left[0]) : leg_length_;
+    double right_length_des = complete_stand_ ? leg_length_ / cos(x_right[0]) : leg_length_;
+    F_leg[0] =
+        pid_left_leg_.computeCommand(left_length_des - left_pos_[0], period) + gravity * cos(left_pos_[1]) + T_roll;
     F_leg[1] =
-        pid_right_leg_.computeCommand(leg_length_ - right_pos_[0], period) + gravity * cos(right_pos_[1]) - T_roll;
+        pid_right_leg_.computeCommand(right_length_des - right_pos_[0], period) + gravity * cos(right_pos_[1]) - T_roll;
   }
   double left_T[2], right_T[2];
   leg_conv(F_leg[0], -u_left(1) + T_theta_diff, left_angle[0], left_angle[1], left_T);
@@ -499,7 +508,7 @@ void BalanceController::setUpLegMotion(const Eigen::Matrix<double, STATE_DIM, 1>
     case LegState::FRONT:
       theta_des = M_PI / 2;
       length_des = 0.4;
-      if (abs(angles::shortest_angular_distance(x[0], M_PI / 2)) < 0.2)
+      if (abs(angles::shortest_angular_distance(x[0], M_PI / 2)) < 0.2 && abs(x[4]) < 0.1)
         leg_state = LegState::BEHIND;
       break;
     case LegState::BEHIND:
@@ -560,8 +569,8 @@ void BalanceController::sitDown(const ros::Time& time, const ros::Duration& peri
     ROS_INFO("[balance] Enter SIT_DOWN");
     balance_state_changed_ = true;
   }
-  left_wheel_joint_handle_.setCommand(0.);
-  right_wheel_joint_handle_.setCommand(0.);
+  left_wheel_joint_handle_.setCommand(pid_left_wheel_vel_.computeCommand(-joint_handles_[0].getVelocity(), period));
+  right_wheel_joint_handle_.setCommand(pid_right_wheel_vel_.computeCommand(-joint_handles_[1].getVelocity(), period));
   left_first_leg_joint_handle_.setCommand(0.);
   left_second_leg_joint_handle_.setCommand(0.);
   right_first_leg_joint_handle_.setCommand(0.);
