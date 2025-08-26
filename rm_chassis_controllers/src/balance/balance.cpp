@@ -463,25 +463,13 @@ inline void BalanceController::polyfit(const std::vector<Eigen::Matrix<double, 2
                                        const std::vector<double>& L0s, Eigen::Matrix<double, 4, 12>& coeffs)
 {
   int N = L0s.size();
-  // 构造设计矩阵 A (N x 4)
-  Eigen::MatrixXd A(N, 4);
+  Eigen::MatrixXd A(N, 4), B(N, 12);
   for (int i = 0; i < N; ++i)
   {
-    A(i, 0) = pow(L0s[i], 3);
-    A(i, 1) = pow(L0s[i], 2);
-    A(i, 2) = L0s[i];
-    A(i, 3) = 1.0;
-  }
-  // 构造目标矩阵 B (N x 12)，每列是一个k(x,y)位置的所有值
-  Eigen::MatrixXd B(N, 12);
-  for (int i = 0; i < N; ++i)
-  {
+    A.block(i, 0, 1, 4) << pow(L0s[i], 3), pow(L0s[i], 2), L0s[i], 1.0;
     Eigen::Map<const Eigen::Matrix<double, 12, 1>> flat(Ks[i].data());
     B.row(i) = flat.transpose();
   }
-  // 最小二乘批量拟合
-  // A * c = B, c = (A^T A)^{-1} A^T B
-  // coeffs: 4 x 12, 每列是4个系数，对应一个k(x,y)
   coeffs = (A.transpose() * A).ldlt().solve(A.transpose() * B);
 }
 
