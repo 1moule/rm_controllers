@@ -323,12 +323,12 @@ double BalanceController::unstickDetection(const ros::Time& time, const ros::Dur
       B[5],B[11];
   // clang-format on
 
-  double P = F * cos(x(0)) + Tp * sin(x(0)) / leg_length_;
+  double P = F * cos(x(0)) + Tp * sin(x(0)) / leg_length;
   double ddot_zM = linear_acc_base_.z - g_;
   auto ddot_x = a * x + b * u;
   double ddot_theta = ddot_x(1);
-  double ddot_zw = ddot_zM - leg_length_ * cos(x(0)) + 2 * leg_length_ * x(1) * sin(x(0)) +
-                   +leg_length_ * (ddot_theta * sin(x(0)) + x(1) * x(1) * cos(x(0)));
+  double ddot_zw = ddot_zM - leg_length * cos(x(0)) + 2 * leg_length * x(1) * sin(x(0)) +
+                   +leg_length * (ddot_theta * sin(x(0)) + x(1) * x(1) * cos(x(0)));
   double Fn = m_w_ * ddot_zw + m_w_ * g_ + P;
   return Fn;
 }
@@ -404,9 +404,10 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   }
   else
   {
-    F_leg[0] = pid_left_leg_.computeCommand(leg_length_ - left_pos_[0], period) + gravity * cos(left_pos_[1]) + T_roll;
-    F_leg[1] =
-        pid_right_leg_.computeCommand(leg_length_ - right_pos_[0], period) + gravity * cos(right_pos_[1]) - T_roll;
+    F_leg[0] = pid_left_leg_.computeCommand(legCmd_.leg_length / cos(x_left(0)) - left_pos_[0], period) +
+               gravity * cos(left_pos_[1]) + T_roll;
+    F_leg[1] = pid_right_leg_.computeCommand(legCmd_.leg_length / cos(x_right(0)) - right_pos_[0], period) +
+               gravity * cos(right_pos_[1]) - T_roll;
   }
   double left_T[2], right_T[2];
   leg_conv(F_leg[0], u_left(1) - T_theta_diff, left_angle[0], left_angle[1], left_T);
