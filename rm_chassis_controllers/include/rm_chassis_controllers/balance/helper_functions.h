@@ -31,6 +31,33 @@ struct ModelParams
   double g;          // Gravity acceleration
 };
 
+inline void generateAB(const std::unique_ptr<ModelParams>& model_params, Eigen::Matrix<double, STATE_DIM, STATE_DIM>& a,
+                       Eigen::Matrix<double, STATE_DIM, CONTROL_DIM>& b, double leg_length)
+{
+  double A[36] = { 0. }, B[12]{ 0. };
+  double L = leg_length * model_params->L_weight;
+  double Lm = leg_length * model_params->Lm_weight;
+  gen_A(model_params->i_m, model_params->i_p, model_params->i_w, L, Lm, model_params->M, model_params->r,
+        model_params->g, model_params->l, model_params->m_p, model_params->m_w, A);
+  gen_B(model_params->i_m, model_params->i_p, model_params->i_w, L, Lm, model_params->M, model_params->r,
+        model_params->l, model_params->m_p, model_params->m_w, B);
+
+  // clang-format off
+  a<< 0.  ,1.,0.,0.,0.   ,0.,
+      A[1],0.,0.,0.,A[25],0.,
+      0.  ,0.,0.,1.,0.   ,0.,
+      A[3],0.,0.,0.,A[27],0.,
+      0.  ,0.,0.,0.,0.   ,1.,
+      A[5],0.,0.,0.,A[29],0.;
+  b<< 0.  ,0.  ,
+      B[1],B[7],
+      0.  ,0.  ,
+      B[3],B[9],
+      0.  ,0.  ,
+      B[5],B[11];
+  // clang-format on
+}
+
 inline void polyfit(const std::vector<Eigen::Matrix<double, 2, 6>>& Ks, const std::vector<double>& L0s,
                     Eigen::Matrix<double, 4, 12>& coeffs)
 {
@@ -49,29 +76,9 @@ inline double calculateSupportForce(double F, double Tp, double leg_length, doub
                                     Eigen::Matrix<double, STATE_DIM, 1> x, Eigen::Matrix<double, CONTROL_DIM, 1> u,
                                     const std::unique_ptr<ModelParams>& model_params)
 {
-  double A[36] = { 0. }, B[12]{ 0. };
-  double L = leg_length * model_params->L_weight;
-  double Lm = leg_length * model_params->Lm_weight;
-  gen_A(model_params->i_m, model_params->i_p, model_params->i_w, L, Lm, model_params->M, model_params->r,
-        model_params->g, model_params->l, model_params->m_p, model_params->m_w, A);
-  gen_B(model_params->i_m, model_params->i_p, model_params->i_w, L, Lm, model_params->M, model_params->r,
-        model_params->l, model_params->m_p, model_params->m_w, B);
-  Eigen::Matrix<double, STATE_DIM, STATE_DIM> a{};
-  Eigen::Matrix<double, STATE_DIM, CONTROL_DIM> b{};
-  // clang-format off
-  a<< 0.  ,1.,0.,0.,0.   ,0.,
-      A[1],0.,0.,0.,A[25],0.,
-      0.  ,0.,0.,1.,0.   ,0.,
-      A[3],0.,0.,0.,A[27],0.,
-      0.  ,0.,0.,0.,0.   ,1.,
-      A[5],0.,0.,0.,A[29],0.;
-  b<< 0.  ,0.  ,
-      B[1],B[7],
-      0.  ,0.  ,
-      B[3],B[9],
-      0.  ,0.  ,
-      B[5],B[11];
-  // clang-format on
+  Eigen::Matrix<double, STATE_DIM, STATE_DIM> a;
+  Eigen::Matrix<double, STATE_DIM, CONTROL_DIM> b;
+  generateAB(model_params, a, b, leg_length);
 
   double P = F * cos(x(0)) + Tp * sin(x(0)) / leg_length;
   double ddot_zM = acc_z - model_params->g;

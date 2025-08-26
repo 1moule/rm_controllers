@@ -168,35 +168,15 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
   }
 
   // Continuous model \dot{x} = A x + B u
-  double A[36]{ 0. }, B[12]{ 0. };
   std::vector<double> lengths;
   std::vector<Eigen::Matrix<double, CONTROL_DIM, STATE_DIM>> ks;
   for (int i = 10; i < 30; i++)
   {
     double length = i / 100.;
     lengths.push_back(length);
-    double L = length * model_params_->L_weight;
-    double Lm = length * model_params_->Lm_weight;
-    gen_A(model_params_->i_m, model_params_->i_p, model_params_->i_w, L, Lm, model_params_->M, model_params_->r,
-          model_params_->g, model_params_->l, model_params_->m_p, model_params_->m_w, A);
-    gen_B(model_params_->i_m, model_params_->i_p, model_params_->i_w, L, Lm, model_params_->M, model_params_->r,
-          model_params_->l, model_params_->m_p, model_params_->m_w, B);
     Eigen::Matrix<double, STATE_DIM, STATE_DIM> a{};
     Eigen::Matrix<double, STATE_DIM, CONTROL_DIM> b{};
-    // clang-format off
-    a<< 0.  ,1.,0.,0.,0.   ,0.,
-        A[1],0.,0.,0.,A[25],0.,
-        0.  ,0.,0.,1.,0.   ,0.,
-        A[3],0.,0.,0.,A[27],0.,
-        0.  ,0.,0.,0.,0.   ,1.,
-        A[5],0.,0.,0.,A[29],0.;
-    b<< 0.  ,0.  ,
-        B[1],B[7],
-        0.  ,0.  ,
-        B[3],B[9],
-        0.  ,0.  ,
-        B[5],B[11];
-    // clang-format on
+    generateAB(model_params_, a, b, length);
     Lqr<double> lqr(a, b, q_, r_);
     if (!lqr.computeK())
     {
