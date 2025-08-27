@@ -407,8 +407,8 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   }
   else
   {
-    double left_length_des = complete_stand_ ? leg_length_ / cos(x_left[0]) : 0.18;
-    double right_length_des = complete_stand_ ? leg_length_ / cos(x_right[0]) : 0.18;
+    double left_length_des = complete_stand_ ? legCmd_.leg_length / cos(x_left[0]) : 0.18;
+    double right_length_des = complete_stand_ ? legCmd_.leg_length / cos(x_right[0]) : 0.18;
     F_leg[0] =
         pid_left_leg_.computeCommand(left_length_des - left_pos_[0], period) + gravity * cos(left_pos_[1]) + T_roll;
     F_leg[1] =
@@ -454,7 +454,7 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   }
 
   // control
-  if (complete_stand_ && (abs(x_left(4)) > 0.4 || abs(x_left(0)) > 1.4))
+  if (complete_stand_ && (abs(x_left(4)) > 0.4 || abs(x_left(0)) > 1.5))
   {
     balance_mode_ = BalanceMode::SIT_DOWN;
     balance_state_changed_ = false;
