@@ -183,7 +183,7 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
   // Continuous model \dot{x} = A x + B u
   std::vector<double> lengths;
   std::vector<Eigen::Matrix<double, CONTROL_DIM, STATE_DIM>> ks;
-  for (int i = 10; i < 30; i++)
+  for (int i = 5; i < 30; i++)
   {
     double length = i / 100.;
     lengths.push_back(length);
@@ -404,8 +404,8 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   }
   else
   {
-    double left_length_des = complete_stand_ ? legCmd_.leg_length / cos(x_left[0]) : 0.18;
-    double right_length_des = complete_stand_ ? legCmd_.leg_length / cos(x_right[0]) : 0.18;
+    double left_length_des = complete_stand_ ? leg_length_ / cos(x_left[0]) : 0.18;
+    double right_length_des = complete_stand_ ? leg_length_ / cos(x_right[0]) : 0.18;
     F_leg[0] =
         pid_left_leg_.computeCommand(left_length_des - left_pos_[0], period) + gravity * cos(left_pos_[1]) + T_roll;
     F_leg[1] =
@@ -416,7 +416,6 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   leg_conv(F_leg[1], -u_right(1) - T_theta_diff, right_angle[0], right_angle[1], right_T);
 
   // Unstick detection
-  bool maybe_unstick = false, unstick = false;
   double left_F[2], right_F[2];
   leg_conv_fwd(left_first_leg_joint_handle_.getEffort(), left_second_leg_joint_handle_.getEffort(), left_angle[0],
                left_angle[1], left_F);
@@ -425,10 +424,10 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   Eigen::Matrix<double, CONTROL_DIM, 1> u_left_real, u_right_real;
   u_left_real << left_wheel_joint_handle_.getEffort(), left_F[1];
   u_right_real << right_wheel_joint_handle_.getEffort(), right_F[1];
-  double Fn_left = calculateSupportForce(F_leg[0], u_left_real(1) - T_theta_diff, left_pos_[0], linear_acc_base_.z,
-                                         x_left_, u_left_real, model_params_);
-  double Fn_right = calculateSupportForce(F_leg[1], u_right_real(1) + T_theta_diff, right_pos_[0], linear_acc_base_.z,
-                                          x_right_, u_right_real, model_params_);
+  double Fn_left = calculateSupportForce(left_F[0], left_F[1], left_pos_[0], linear_acc_base_.z, x_left_, u_left_real,
+                                         model_params_);
+  double Fn_right = calculateSupportForce(right_F[0], right_F[1], right_pos_[0], linear_acc_base_.z, x_right_,
+                                          u_right_real, model_params_);
   Eigen::Matrix<double, CONTROL_DIM, STATE_DIM> k_left_unstick{}, k_right_unstick{};
   k_left_unstick.setZero();
   k_right_unstick.setZero();
@@ -438,18 +437,15 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   {
     u_left = k_left_unstick * (-x_left);
     leg_conv(0., -u_left(1) + T_theta_diff, left_angle[0], left_angle[1], left_T);
-    maybe_unstick = true;
   }
   if (Fn_right < 10. && complete_stand_ && !legCmd_.jump)
   {
     u_right = k_right_unstick * (-x_right);
     leg_conv(0., -u_right(1) - T_theta_diff, right_angle[0], right_angle[1], right_T);
-    if (maybe_unstick)
-      unstick = true;
   }
 
   // control
-  if (complete_stand_ && !unstick && !legCmd_.jump && (abs(x_left(4)) > 0.8))
+  if (complete_stand_ && (abs(x_left(4)) > 0.3 || abs(x_left(0)) > 1.2))
   {
     balance_mode_ = BalanceMode::SIT_DOWN;
     balance_state_changed_ = false;
@@ -461,8 +457,8 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   }
   else
   {
-    left_wheel_joint_handle_.setCommand(unstick ? 0. : u_left(0) - T_yaw);
-    right_wheel_joint_handle_.setCommand(unstick ? 0. : u_right(0) + T_yaw);
+    left_wheel_joint_handle_.setCommand(u_left(0) - T_yaw);
+    right_wheel_joint_handle_.setCommand(u_right(0) + T_yaw);
     left_first_leg_joint_handle_.setCommand(left_T[0]);
     right_first_leg_joint_handle_.setCommand(right_T[0]);
     left_second_leg_joint_handle_.setCommand(left_T[1]);
@@ -554,27 +550,27 @@ void BalanceController::sitDown(const ros::Time& time, const ros::Duration& peri
     ROS_INFO("[balance] Enter SIT_DOWN");
     balance_state_changed_ = true;
   }
-  Eigen::Matrix<double, 2, 1> F_leg;
-  double T_theta_l, T_theta_r;
-  F_leg[0] = pid_left_leg_.computeCommand(0.1 - left_pos_[0], period);
-  F_leg[1] = pid_right_leg_.computeCommand(0.1 - right_pos_[0], period);
-  T_theta_l = pid_left_leg_theta_.computeCommand(-0.1 - left_pos_[1], period);
-  T_theta_r = pid_right_leg_theta_.computeCommand(-0.1 - right_pos_[1], period);
-  double left_T[2], right_T[2];
-  leg_conv(F_leg[0], -T_theta_l, left_angle[0], left_angle[1], left_T);
-  leg_conv(F_leg[1], -T_theta_r, right_angle[0], right_angle[1], right_T);
-  left_first_leg_joint_handle_.setCommand(left_T[0]);
-  right_first_leg_joint_handle_.setCommand(right_T[0]);
-  left_second_leg_joint_handle_.setCommand(left_T[1]);
-  right_second_leg_joint_handle_.setCommand(right_T[1]);
-  left_wheel_joint_handle_.setCommand(pid_left_wheel_vel_.computeCommand(-joint_handles_[0].getVelocity(), period));
-  right_wheel_joint_handle_.setCommand(pid_right_wheel_vel_.computeCommand(-joint_handles_[1].getVelocity(), period));
-  //  left_first_leg_joint_handle_.setCommand(0.);
-  //  left_second_leg_joint_handle_.setCommand(0.);
-  //  right_first_leg_joint_handle_.setCommand(0.);
-  //  right_second_leg_joint_handle_.setCommand(0.);
-  //  if (abs(x_left_(1)) < 0.1 && abs(x_left_(5)) < 0.1 && abs(x_left_(3)) < 0.05)
-  if (left_pos_[0] < 0.15 && right_pos_[0] < 0.15)
+  //  Eigen::Matrix<double, 2, 1> F_leg;
+  //  double T_theta_l, T_theta_r;
+  //  F_leg[0] = pid_left_leg_.computeCommand(0.1 - left_pos_[0], period);
+  //  F_leg[1] = pid_right_leg_.computeCommand(0.1 - right_pos_[0], period);
+  //  T_theta_l = pid_left_leg_theta_.computeCommand(-0.1 - left_pos_[1], period);
+  //  T_theta_r = pid_right_leg_theta_.computeCommand(-0.1 - right_pos_[1], period);
+  //  double left_T[2], right_T[2];
+  //  leg_conv(F_leg[0], -T_theta_l, left_angle[0], left_angle[1], left_T);
+  //  leg_conv(F_leg[1], -T_theta_r, right_angle[0], right_angle[1], right_T);
+  //  left_first_leg_joint_handle_.setCommand(left_T[0]);
+  //  right_first_leg_joint_handle_.setCommand(right_T[0]);
+  //  left_second_leg_joint_handle_.setCommand(left_T[1]);
+  //  right_second_leg_joint_handle_.setCommand(right_T[1]);
+  //  left_wheel_joint_handle_.setCommand(pid_left_wheel_vel_.computeCommand(-joint_handles_[0].getVelocity(), period));
+  //  right_wheel_joint_handle_.setCommand(pid_right_wheel_vel_.computeCommand(-joint_handles_[1].getVelocity(), period));
+  left_first_leg_joint_handle_.setCommand(0.);
+  left_second_leg_joint_handle_.setCommand(0.);
+  right_first_leg_joint_handle_.setCommand(0.);
+  right_second_leg_joint_handle_.setCommand(0.);
+  if (abs(x_left_(1)) < 0.1 && abs(x_left_(5)) < 0.1 && abs(x_left_(3)) < 0.05)
+  //    if (left_pos_[0] < 0.15 && right_pos_[0] < 0.15)
   {
     balance_mode_ = BalanceMode::STAND_UP;
     balance_state_changed_ = false;
