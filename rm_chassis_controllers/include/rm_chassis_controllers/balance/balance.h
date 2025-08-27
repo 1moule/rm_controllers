@@ -24,6 +24,7 @@ class BalanceController : public ChassisBase<rm_control::RobotStateInterface, ha
   enum BalanceMode
   {
     NORMAL,
+    SIT_DOWN,
   };
 
 public:
@@ -34,6 +35,7 @@ private:
   void updateEstimation(const ros::Time& time, const ros::Duration& period);
   void moveJoint(const ros::Time& time, const ros::Duration& period) override;
   void normal(const ros::Time& time, const ros::Duration& period);
+  void sitDown(const ros::Time& time, const ros::Duration& period);
   geometry_msgs::Twist odometry() override;
   Eigen::Matrix<double, 4, CONTROL_DIM * STATE_DIM> coeffs_;
   Eigen::Matrix<double, STATE_DIM, STATE_DIM> q_{};
@@ -44,6 +46,7 @@ private:
   std::unique_ptr<ModelParams> model_params_;
 
   int balance_mode_;
+  bool balance_state_changed_ = false;
 
   // jump
   bool complete_first_shrink_ = false, complete_elongation_ = false, complete_second_shrink_ = false;
