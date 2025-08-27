@@ -56,56 +56,49 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
   joint_handles_.push_back(left_second_leg_joint_handle_);
   joint_handles_.push_back(right_second_leg_joint_handle_);
 
-  // m_w is mass of single wheel
-  // m is mass of the robot except wheels and momentum_blocks
-  // i_w is the moment of inertia of the wheel around the rotational axis of the motor
-  // i_m is the moment of inertia of the robot around the y-axis of base_link coordinate.
-  // l is the vertical component of the distance between the wheel center and the center of mass of robot
-  //  double m_w, m, i_w, i_m, l, g;
-  double L, Lm, l, m_w, m_p, M, i_w, i_p, i_m, g;
-  double L_weight, Lm_weight;
+  model_params_ = std::make_unique<ModelParams>();
 
-  if (!controller_nh.getParam("m_w", m_w))
+  if (!controller_nh.getParam("m_w", model_params_->m_w))
   {
     ROS_ERROR("Params m_w doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
     return false;
   }
-  if (!controller_nh.getParam("m_p", m_p))
+  if (!controller_nh.getParam("m_p", model_params_->m_p))
   {
     ROS_ERROR("Params m_w doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
     return false;
   }
-  if (!controller_nh.getParam("M", M))
+  if (!controller_nh.getParam("M", model_params_->M))
   {
     ROS_ERROR("Params m doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
     return false;
   }
-  if (!controller_nh.getParam("i_w", i_w))
+  if (!controller_nh.getParam("i_w", model_params_->i_w))
   {
     ROS_ERROR("Params i_w doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
     return false;
   }
-  if (!controller_nh.getParam("i_m", i_m))
+  if (!controller_nh.getParam("i_m", model_params_->i_m))
   {
     ROS_ERROR("Params i_m doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
     return false;
   }
-  if (!controller_nh.getParam("i_p", i_p))
+  if (!controller_nh.getParam("i_p", model_params_->i_p))
   {
     ROS_ERROR("Params i_m doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
     return false;
   }
-  if (!controller_nh.getParam("l", l))
+  if (!controller_nh.getParam("l", model_params_->l))
   {
     ROS_ERROR("Params l doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
     return false;
   }
-  if (!controller_nh.getParam("L_weight", L_weight))
+  if (!controller_nh.getParam("L_weight", model_params_->L_weight))
   {
     ROS_ERROR("Params l doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
     return false;
   }
-  if (!controller_nh.getParam("Lm_weight", Lm_weight))
+  if (!controller_nh.getParam("Lm_weight", model_params_->Lm_weight))
   {
     ROS_ERROR("Params l doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
     return false;
@@ -115,12 +108,12 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
     ROS_ERROR("Params l doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
     return false;
   }
-  if (!controller_nh.getParam("g", g))
+  if (!controller_nh.getParam("g", model_params_->g))
   {
     ROS_ERROR("Params g doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
     return false;
   }
-  if (!controller_nh.getParam("wheel_radius", wheel_radius_))
+  if (!controller_nh.getParam("wheel_radius", model_params_->r))
   {
     ROS_ERROR("Params wheel_radius doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
     return false;
@@ -130,10 +123,6 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
     ROS_ERROR("Load param fail, check the resist of vmc_bias_angle");
     return false;
   }
-  L = leg_length_ * L_weight;
-  Lm = leg_length_ * Lm_weight;
-  body_mass_ = M;
-  m_w_ = m_w;
 
   if (controller_nh.hasParam("pid_yaw_vel"))
     if (!pid_yaw_vel_.init(ros::NodeHandle(controller_nh, "pid_yaw_vel")))
@@ -192,35 +181,25 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
   }
 
   // Continuous model \dot{x} = A x + B u
-  double A[36]{ 0. }, B[12]{ 0. };
-  gen_A(i_m, i_p, i_w, L, Lm, M, wheel_radius_, g, l, m_p, m_w, A);
-  gen_B(i_m, i_p, i_w, L, Lm, M, wheel_radius_, l, m_p, m_w, B);
-  // clang-format off
-  a_<<0.  ,1.,0.,0.,0.   ,0.,
-      A[1],0.,0.,0.,A[25],0.,
-      0.  ,0.,0.,1.,0.   ,0.,
-      A[3],0.,0.,0.,A[27],0.,
-      0.  ,0.,0.,0.,0.   ,1.,
-      A[5],0.,0.,0.,A[29],0.;
-  b_<<0.  ,0.  ,
-      B[1],B[7],
-      0.  ,0.  ,
-      B[3],B[9],
-      0.  ,0.  ,
-      B[5],B[11];
-  // clang-format on
-
-  ROS_INFO_STREAM("A:" << a_);
-  ROS_INFO_STREAM("B:" << b_);
-  Lqr<double> lqr(a_, b_, q_, r_);
-  if (!lqr.computeK())
+  std::vector<double> lengths;
+  std::vector<Eigen::Matrix<double, CONTROL_DIM, STATE_DIM>> ks;
+  for (int i = 10; i < 30; i++)
   {
-    ROS_ERROR("Failed to compute K of LQR.");
-    return false;
+    double length = i / 100.;
+    lengths.push_back(length);
+    Eigen::Matrix<double, STATE_DIM, STATE_DIM> a{};
+    Eigen::Matrix<double, STATE_DIM, CONTROL_DIM> b{};
+    generateAB(model_params_, a, b, length);
+    Lqr<double> lqr(a, b, q_, r_);
+    if (!lqr.computeK())
+    {
+      ROS_ERROR("Failed to compute K of LQR.");
+      return false;
+    }
+    Eigen::Matrix<double, CONTROL_DIM, STATE_DIM> k = lqr.getK();
+    ks.push_back(k);
   }
-
-  k_ = lqr.getK();
-  ROS_INFO_STREAM("K of LQR:" << k_);
+  polyfit(ks, lengths, coeffs_);
 
   state_pub_.reset(new realtime_tools::RealtimePublisher<rm_msgs::BalanceState>(root_nh, "/state", 100));
   auto legCmdCallback = [this](const rm_msgs::LegCmdConstPtr& msg) {
@@ -336,20 +315,6 @@ void BalanceController::updateEstimation(const ros::Time& time, const ros::Durat
   }
 }
 
-double BalanceController::unstickDetection(const ros::Time& time, const ros::Duration& period, double F, double Tp,
-                                           Eigen::Matrix<double, STATE_DIM, 1> x,
-                                           Eigen::Matrix<double, CONTROL_DIM, 1> u)
-{
-  double P = F * cos(x(0)) + Tp * sin(x(0)) / leg_length_;
-  double ddot_zM = linear_acc_base_.z - g_;
-  auto ddot_x = a_ * x + b_ * u;
-  double ddot_theta = ddot_x(1);
-  double ddot_zw = ddot_zM - leg_length_ * cos(x(0)) + 2 * leg_length_ * x(1) * sin(x(0)) +
-                   +leg_length_ * (ddot_theta * sin(x(0)) + x(1) * x(1) * cos(x(0)));
-  double Fn = m_w_ * ddot_zw + m_w_ * g_ + P;
-  return Fn;
-}
-
 void BalanceController::moveJoint(const ros::Time& time, const ros::Duration& period)
 {
   updateEstimation(time, period);
@@ -389,16 +354,25 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   double T_roll = pid_roll_.computeCommand(0. - roll_, period);
 
   // LQR
+  Eigen::Matrix<double, CONTROL_DIM, STATE_DIM> k_left{}, k_right{};
+  for (int i = 0; i < 2; i++)
+    for (int j = 0; j < 6; j++)
+    {
+      k_left(i, j) = coeffs_(0, i + 2 * j) * pow(left_pos_[0], 3) + coeffs_(1, i + 2 * j) * pow(left_pos_[0], 2) +
+                     coeffs_(2, i + 2 * j) * left_pos_[0] + coeffs_(3, i + 2 * j);
+      k_right(i, j) = coeffs_(0, i + 2 * j) * pow(right_pos_[0], 3) + coeffs_(1, i + 2 * j) * pow(right_pos_[0], 2) +
+                      coeffs_(2, i + 2 * j) * right_pos_[0] + coeffs_(3, i + 2 * j);
+    }
   Eigen::Matrix<double, CONTROL_DIM, 1> u_left, u_right;
   auto x_left = x_left_;
   auto x_right = x_right_;
   x_left(3) -= vel_cmd_.x;
   x_right(3) -= vel_cmd_.x;
-  u_left = k_ * (-x_left);
-  u_right = k_ * (-x_right);
+  u_left = k_left * (-x_left);
+  u_right = k_right * (-x_right);
 
   // Leg control
-  double gravity = 1. / 2. * body_mass_ * g_;
+  double gravity = 1. / 2. * model_params_->M * model_params_->g;
   Eigen::Matrix<double, 2, 1> F_leg;
   double leg_length_des = leg_length_;
   if (legCmd_.jump)
@@ -430,8 +404,8 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   }
   else
   {
-    double left_length_des = complete_stand_ ? leg_length_ / cos(x_left[0]) : 0.18;
-    double right_length_des = complete_stand_ ? leg_length_ / cos(x_right[0]) : 0.18;
+    double left_length_des = complete_stand_ ? legCmd_.leg_length / cos(x_left[0]) : 0.18;
+    double right_length_des = complete_stand_ ? legCmd_.leg_length / cos(x_right[0]) : 0.18;
     F_leg[0] =
         pid_left_leg_.computeCommand(left_length_des - left_pos_[0], period) + gravity * cos(left_pos_[1]) + T_roll;
     F_leg[1] =
@@ -442,6 +416,7 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   leg_conv(F_leg[1], -u_right(1) - T_theta_diff, right_angle[0], right_angle[1], right_T);
 
   // Unstick detection
+  bool maybe_unstick = false, unstick = false;
   double left_F[2], right_F[2];
   leg_conv_fwd(left_first_leg_joint_handle_.getEffort(), left_second_leg_joint_handle_.getEffort(), left_angle[0],
                left_angle[1], left_F);
@@ -450,25 +425,31 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   Eigen::Matrix<double, CONTROL_DIM, 1> u_left_real, u_right_real;
   u_left_real << left_wheel_joint_handle_.getEffort(), left_F[1];
   u_right_real << right_wheel_joint_handle_.getEffort(), right_F[1];
-  double Fn_left = unstickDetection(time, period, left_F[0], left_F[1], x_left_, u_left_real);
-  double Fn_right = unstickDetection(time, period, right_F[0], right_F[1], x_right_, u_right_real);
-  Eigen::Matrix<double, CONTROL_DIM, STATE_DIM> k{};
-  k.setZero();
-  k(1, 0) = k_(1, 0);
-  k(1, 1) = k_(1, 1);
+  double Fn_left = calculateSupportForce(F_leg[0], u_left_real(1) - T_theta_diff, left_pos_[0], linear_acc_base_.z,
+                                         x_left_, u_left_real, model_params_);
+  double Fn_right = calculateSupportForce(F_leg[1], u_right_real(1) + T_theta_diff, right_pos_[0], linear_acc_base_.z,
+                                          x_right_, u_right_real, model_params_);
+  Eigen::Matrix<double, CONTROL_DIM, STATE_DIM> k_left_unstick{}, k_right_unstick{};
+  k_left_unstick.setZero();
+  k_right_unstick.setZero();
+  k_left_unstick(1, 0) = k_left(1, 0);
+  k_right_unstick(1, 1) = k_right(1, 1);
   if (Fn_left < 10. && complete_stand_ && !legCmd_.jump)
   {
-    u_left = k * (-x_left);
+    u_left = k_left_unstick * (-x_left);
     leg_conv(0., -u_left(1) + T_theta_diff, left_angle[0], left_angle[1], left_T);
+    maybe_unstick = true;
   }
   if (Fn_right < 10. && complete_stand_ && !legCmd_.jump)
   {
-    u_right = k * (-x_right);
+    u_right = k_right_unstick * (-x_right);
     leg_conv(0., -u_right(1) - T_theta_diff, right_angle[0], right_angle[1], right_T);
+    if (maybe_unstick)
+      unstick = true;
   }
 
   // control
-  if (complete_stand_ && (abs(x_left(4)) > 0.3 || abs(x_left(0)) > 1.2))
+  if (complete_stand_ && !unstick && !legCmd_.jump && (abs(x_left(4)) > 0.8))
   {
     balance_mode_ = BalanceMode::SIT_DOWN;
     balance_state_changed_ = false;
@@ -480,8 +461,8 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   }
   else
   {
-    left_wheel_joint_handle_.setCommand(u_left(0) - T_yaw);
-    right_wheel_joint_handle_.setCommand(u_right(0) + T_yaw);
+    left_wheel_joint_handle_.setCommand(unstick ? 0. : u_left(0) - T_yaw);
+    right_wheel_joint_handle_.setCommand(unstick ? 0. : u_right(0) + T_yaw);
     left_first_leg_joint_handle_.setCommand(left_T[0]);
     right_first_leg_joint_handle_.setCommand(right_T[0]);
     left_second_leg_joint_handle_.setCommand(left_T[1]);

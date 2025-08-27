@@ -14,6 +14,7 @@
 #include <rm_common/filters/filters.h>
 
 #include "rm_chassis_controllers/chassis_base.h"
+#include "rm_chassis_controllers/balance/helper_functions.h"
 
 namespace rm_chassis_controllers
 {
@@ -41,10 +42,6 @@ public:
   void stopping(const ros::Time& time) override;
 
 private:
-  static const int STATE_DIM = 6;
-  static const int CONTROL_DIM = 2;
-  double unstickDetection(const ros::Time& time, const ros::Duration& period, double F, double Tp,
-                          Eigen::Matrix<double, STATE_DIM, 1> x, Eigen::Matrix<double, CONTROL_DIM, 1> u);
   void updateEstimation(const ros::Time& time, const ros::Duration& period);
   void detectLegState(const Eigen::Matrix<double, STATE_DIM, 1>& x, LegState& leg_state);
   void setUpLegMotion(const Eigen::Matrix<double, STATE_DIM, 1>& x, const LegState& other_leg_state,
@@ -55,14 +52,13 @@ private:
   void standUp(const ros::Time& time, const ros::Duration& period);
   void sitDown(const ros::Time& time, const ros::Duration& period);
   geometry_msgs::Twist odometry() override;
-  Eigen::Matrix<double, CONTROL_DIM, STATE_DIM> k_{};
-  Eigen::Matrix<double, STATE_DIM, STATE_DIM> a_{}, q_{};
-  Eigen::Matrix<double, STATE_DIM, CONTROL_DIM> b_{};
+  Eigen::Matrix<double, 4, CONTROL_DIM * STATE_DIM> coeffs_;
+  Eigen::Matrix<double, STATE_DIM, STATE_DIM> q_{};
   Eigen::Matrix<double, CONTROL_DIM, CONTROL_DIM> r_{};
   Eigen::Matrix<double, STATE_DIM, 1> x_left_, x_right_;
   double vmc_bias_angle_, left_angle[2], right_angle[2], left_pos_[2], left_spd_[2], right_pos_[2], right_spd_[2];
-  double wheel_radius_ = 0.09;
-  double body_mass_ = 10.717, g_ = 9.81, m_w_;
+
+  std::unique_ptr<ModelParams> model_params_;
 
   int balance_mode_;
   bool balance_state_changed_ = false;
