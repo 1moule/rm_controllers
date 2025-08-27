@@ -433,19 +433,25 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   k_right_unstick.setZero();
   k_left_unstick(1, 0) = k_left(1, 0);
   k_right_unstick(1, 1) = k_right(1, 1);
-  if (Fn_left < 10. && complete_stand_ && !legCmd_.jump)
+  if (Fn_left < 20. && complete_stand_)
   {
     u_left = k_left_unstick * (-x_left);
-    leg_conv(0., -u_left(1) + T_theta_diff, left_angle[0], left_angle[1], left_T);
+    //    if (legCmd_.jump)
+    leg_conv(F_leg[0], -u_left(1) + T_theta_diff, left_angle[0], left_angle[1], left_T);
+    //    else
+    //      leg_conv(0., -u_left(1) + T_theta_diff, left_angle[0], left_angle[1], left_T);
   }
-  if (Fn_right < 10. && complete_stand_ && !legCmd_.jump)
+  if (Fn_right < 20. && complete_stand_)
   {
     u_right = k_right_unstick * (-x_right);
-    leg_conv(0., -u_right(1) - T_theta_diff, right_angle[0], right_angle[1], right_T);
+    //    if (legCmd_.jump)
+    leg_conv(F_leg[1], -u_right(1) - T_theta_diff, right_angle[0], right_angle[1], right_T);
+    //    else
+    //      leg_conv(0., -u_right(1) - T_theta_diff, right_angle[0], right_angle[1], right_T);
   }
 
   // control
-  if (complete_stand_ && (abs(x_left(4)) > 0.3 || abs(x_left(0)) > 1.2))
+  if (complete_stand_ && (abs(x_left(4)) > 0.4 || abs(x_left(0)) > 1.4))
   {
     balance_mode_ = BalanceMode::SIT_DOWN;
     balance_state_changed_ = false;
@@ -453,6 +459,12 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
     complete_elongation_ = false;
     complete_second_shrink_ = false;
     legCmd_.jump = false;
+    left_wheel_joint_handle_.setCommand(0.);
+    right_wheel_joint_handle_.setCommand(0.);
+    left_first_leg_joint_handle_.setCommand(0.);
+    left_second_leg_joint_handle_.setCommand(0.);
+    right_first_leg_joint_handle_.setCommand(0.);
+    right_second_leg_joint_handle_.setCommand(0.);
     ROS_INFO("[balance] Exit NORMAL");
   }
   else
@@ -468,11 +480,11 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
 
 void BalanceController::detectLegState(const Eigen::Matrix<double, STATE_DIM, 1>& x, LegState& leg_state)
 {
-  if (x[0] > -M_PI / 2 + 0.1 && x[0] < M_PI / 2 - 0.1)
+  if (x[0] > -M_PI / 2 + 0.1 && x[0] < M_PI / 2 - 0.2)
     leg_state = LegState::UNDER;
   else if (x[0] < -M_PI / 2 + 0.1 && x[0] > -M_PI)
     leg_state = LegState::FRONT;
-  else if (x[0] > M_PI / 2 - 0.1 && x[0] < M_PI)
+  else if (x[0] > M_PI / 2 - 0.2 && x[0] < M_PI)
     leg_state = LegState::BEHIND;
 }
 
@@ -487,7 +499,7 @@ void BalanceController::setUpLegMotion(const Eigen::Matrix<double, STATE_DIM, 1>
       length_des = 0.05;
       break;
     case LegState::FRONT:
-      theta_des = M_PI / 2;
+      theta_des = M_PI / 2 + 0.2;
       length_des = 0.4;
       if (abs(angles::shortest_angular_distance(x[0], M_PI / 2)) < 0.2 && abs(x[4]) < 0.1)
         leg_state = LegState::BEHIND;
@@ -563,8 +575,8 @@ void BalanceController::sitDown(const ros::Time& time, const ros::Duration& peri
   //  right_first_leg_joint_handle_.setCommand(right_T[0]);
   //  left_second_leg_joint_handle_.setCommand(left_T[1]);
   //  right_second_leg_joint_handle_.setCommand(right_T[1]);
-  //  left_wheel_joint_handle_.setCommand(pid_left_wheel_vel_.computeCommand(-joint_handles_[0].getVelocity(), period));
-  //  right_wheel_joint_handle_.setCommand(pid_right_wheel_vel_.computeCommand(-joint_handles_[1].getVelocity(), period));
+  left_wheel_joint_handle_.setCommand(pid_left_wheel_vel_.computeCommand(-joint_handles_[0].getVelocity(), period));
+  right_wheel_joint_handle_.setCommand(pid_right_wheel_vel_.computeCommand(-joint_handles_[1].getVelocity(), period));
   left_first_leg_joint_handle_.setCommand(0.);
   left_second_leg_joint_handle_.setCommand(0.);
   right_first_leg_joint_handle_.setCommand(0.);
