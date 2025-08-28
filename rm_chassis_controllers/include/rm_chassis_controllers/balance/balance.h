@@ -67,7 +67,8 @@ private:
   bool leg_under_body_ = false, leg_front_body_ = false, leg_behind_body_ = false, complete_stand_ = false;
 
   // jump
-  bool complete_first_shrink_ = false, complete_elongation_ = false, complete_second_shrink_ = false;
+  bool complete_first_shrink_ = false, complete_elongation_ = false, complete_second_shrink_ = false,
+       start_jump_ = false;
 
   hardware_interface::ImuSensorHandle imu_handle_;
   hardware_interface::JointHandle left_wheel_joint_handle_, right_wheel_joint_handle_, left_first_leg_joint_handle_,

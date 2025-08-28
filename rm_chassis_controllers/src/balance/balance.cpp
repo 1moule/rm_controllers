@@ -378,7 +378,9 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   double gravity = 1. / 2. * model_params_->M * model_params_->g;
   Eigen::Matrix<double, 2, 1> F_leg;
   double leg_length_des = leg_length_;
-  if (legCmd_.jump)
+  if (!start_jump_ && legCmd_.jump && abs(x_left[0]) < 0.1)
+    start_jump_ = true;
+  if (start_jump_)
   {
     if (!complete_first_shrink_)
       leg_length_des = 0.15;
@@ -398,6 +400,7 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
       complete_elongation_ = false;
       complete_second_shrink_ = false;
       legCmd_.jump = false;
+      start_jump_ = false;
       ROS_INFO("[balance] Jump finished");
     }
     F_leg[0] =
@@ -439,18 +442,12 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   if (Fn_left < 20. && complete_stand_)
   {
     u_left = k_left_unstick * (-x_left);
-    //    if (legCmd_.jump)
     leg_conv(F_leg[0], -u_left(1) + T_theta_diff, left_angle[0], left_angle[1], left_T);
-    //    else
-    //      leg_conv(0., -u_left(1) + T_theta_diff, left_angle[0], left_angle[1], left_T);
   }
   if (Fn_right < 20. && complete_stand_)
   {
     u_right = k_right_unstick * (-x_right);
-    //    if (legCmd_.jump)
     leg_conv(F_leg[1], -u_right(1) - T_theta_diff, right_angle[0], right_angle[1], right_T);
-    //    else
-    //      leg_conv(0., -u_right(1) - T_theta_diff, right_angle[0], right_angle[1], right_T);
   }
 
   // control
