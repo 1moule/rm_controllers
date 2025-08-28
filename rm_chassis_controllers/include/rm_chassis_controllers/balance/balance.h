@@ -28,13 +28,6 @@ class BalanceController : public ChassisBase<rm_control::RobotStateInterface, ha
     STAND_UP,
     SIT_DOWN,
   };
-  enum LegState
-  {
-    UNDER,
-    FRONT,
-    BEHIND,
-  } left_leg_state,
-      right_leg_state;
 
 public:
   BalanceController() = default;
@@ -43,14 +36,13 @@ public:
 
 private:
   void updateEstimation(const ros::Time& time, const ros::Duration& period);
-  void detectLegState(const Eigen::Matrix<double, STATE_DIM, 1>& x, LegState& leg_state);
-  void setUpLegMotion(const Eigen::Matrix<double, STATE_DIM, 1>& x, const LegState& other_leg_state,
-                      const double& leg_length, const double& leg_theta, LegState& leg_state, double& theta_des,
-                      double& length_des);
   void moveJoint(const ros::Time& time, const ros::Duration& period) override;
   void normal(const ros::Time& time, const ros::Duration& period);
   void standUp(const ros::Time& time, const ros::Duration& period);
   void sitDown(const ros::Time& time, const ros::Duration& period);
+  bool setupModelParams(ros::NodeHandle& controller_nh);
+  bool setupPID(ros::NodeHandle& controller_nh);
+  bool setupLQR(ros::NodeHandle& controller_nh);
   geometry_msgs::Twist odometry() override;
   Eigen::Matrix<double, 4, CONTROL_DIM * STATE_DIM> coeffs_;
   Eigen::Matrix<double, STATE_DIM, STATE_DIM> q_{};
@@ -60,10 +52,11 @@ private:
 
   std::unique_ptr<ModelParams> model_params_;
 
-  int balance_mode_;
+  int balance_mode_ = BalanceMode::STAND_UP;
   bool balance_state_changed_ = false;
 
   // stand up
+  int left_leg_state, right_leg_state;
   bool leg_under_body_ = false, leg_front_body_ = false, leg_behind_body_ = false, complete_stand_ = false;
 
   // jump

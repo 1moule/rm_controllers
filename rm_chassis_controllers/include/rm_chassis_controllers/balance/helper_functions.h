@@ -8,6 +8,8 @@
 #include <vector>
 #include <cstddef>
 #include <memory>
+#include <angles/angles.h>
+
 #include "rm_chassis_controllers/balance/gen_A.h"
 #include "rm_chassis_controllers/balance/gen_B.h"
 
@@ -31,6 +33,20 @@ struct ModelParams
   double g;          // Gravity acceleration
 };
 
+enum LegState
+{
+  UNDER,
+  FRONT,
+  BEHIND
+};
+
+/**
+ * Generate continuous-time state space matrices A and B
+ * @param model_params
+ * @param a
+ * @param b
+ * @param leg_length
+ */
 inline void generateAB(const std::unique_ptr<ModelParams>& model_params, Eigen::Matrix<double, STATE_DIM, STATE_DIM>& a,
                        Eigen::Matrix<double, STATE_DIM, CONTROL_DIM>& b, double leg_length)
 {
@@ -58,6 +74,12 @@ inline void generateAB(const std::unique_ptr<ModelParams>& model_params, Eigen::
   // clang-format on
 }
 
+/**
+ * Fit the LQR gain matrix K as a cubic polynomial of leg length
+ * @param Ks
+ * @param L0s
+ * @param coeffs
+ */
 inline void polyfit(const std::vector<Eigen::Matrix<double, 2, 6>>& Ks, const std::vector<double>& L0s,
                     Eigen::Matrix<double, 4, 12>& coeffs)
 {
@@ -72,6 +94,17 @@ inline void polyfit(const std::vector<Eigen::Matrix<double, 2, 6>>& Ks, const st
   coeffs = (A.transpose() * A).ldlt().solve(A.transpose() * B);
 }
 
+/**
+ * Calculate the normal support force
+ * @param F
+ * @param Tp
+ * @param leg_length
+ * @param acc_z
+ * @param x
+ * @param u
+ * @param model_params
+ * @return
+ */
 inline double calculateSupportForce(double F, double Tp, double leg_length, double acc_z,
                                     Eigen::Matrix<double, STATE_DIM, 1> x, Eigen::Matrix<double, CONTROL_DIM, 1> u,
                                     const std::unique_ptr<ModelParams>& model_params)
@@ -88,6 +121,59 @@ inline double calculateSupportForce(double F, double Tp, double leg_length, doub
                    +leg_length * (ddot_theta * sin(x(0)) + x(1) * x(1) * cos(x(0)));
   double Fn = model_params->m_w * ddot_zw + model_params->m_w * model_params->g + P;
   return Fn;
+}
+
+/**
+ * Detect the leg state before stand up: UNDER, FRONT, BEHIND
+ * @param x
+ * @param leg_state
+ */
+inline void detectLegState(const Eigen::Matrix<double, STATE_DIM, 1>& x, int& leg_state)
+{
+  if (x[0] > -M_PI / 2 + 0.1 && x[0] < M_PI / 2 - 0.2)
+    leg_state = LegState::UNDER;
+  else if (x[0] < -M_PI / 2 + 0.1 && x[0] > -M_PI)
+    leg_state = LegState::FRONT;
+  else if (x[0] > M_PI / 2 - 0.2 && x[0] < M_PI)
+    leg_state = LegState::BEHIND;
+}
+
+/**
+ * Set up the desired leg motion during stand up
+ * @param x
+ * @param other_leg_state
+ * @param leg_length
+ * @param leg_theta
+ * @param leg_state
+ * @param theta_des
+ * @param length_des
+ */
+inline void setUpLegMotion(const Eigen::Matrix<double, STATE_DIM, 1>& x, const int& other_leg_state,
+                           const double& leg_length, const double& leg_theta, int& leg_state, double& theta_des,
+                           double& length_des)
+{
+  switch (leg_state)
+  {
+    case LegState::UNDER:
+      theta_des = 0.15;
+      length_des = 0.05;
+      break;
+    case LegState::FRONT:
+      theta_des = M_PI / 2 + 0.2;
+      length_des = 0.4;
+      if (abs(angles::shortest_angular_distance(x[0], M_PI / 2)) < 0.2 && abs(x[4]) < 0.1)
+        leg_state = LegState::BEHIND;
+      break;
+    case LegState::BEHIND:
+      theta_des = leg_theta;
+      length_des = leg_length;
+      if (other_leg_state != LegState::FRONT)
+      {
+        theta_des = 0.;
+        length_des = 0.05;
+      }
+      break;
+  }
 }
 
 }  // namespace rm_chassis_controllers

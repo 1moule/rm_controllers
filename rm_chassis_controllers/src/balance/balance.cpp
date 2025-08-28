@@ -4,10 +4,7 @@
 #include "rm_chassis_controllers/balance/balance.h"
 #include "rm_chassis_controllers/balance/vmc/leg_conv.h"
 #include "rm_chassis_controllers/balance/vmc/leg_conv_fwd.h"
-#include "rm_chassis_controllers/balance/vmc/leg_pos.h"
 #include "rm_chassis_controllers/balance/vmc/leg_spd.h"
-#include "rm_chassis_controllers/balance/gen_A.h"
-#include "rm_chassis_controllers/balance/gen_B.h"
 
 #include <rm_common/ros_utilities.h>
 #include <rm_common/ori_tool.h>
@@ -29,177 +26,30 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
       getParam(controller_nh, "imu_name", std::string("base_imu")));
   std::string left_wheel_joint, right_wheel_joint, left_first_leg_joint, left_second_leg_joint, right_first_leg_joint,
       right_second_leg_joint;
-  if (!controller_nh.getParam("left/wheel_joint", left_wheel_joint) ||
-      !controller_nh.getParam("right/wheel_joint", right_wheel_joint) ||
-      !controller_nh.getParam("left/first_leg_joint", left_first_leg_joint) ||
-      !controller_nh.getParam("right/first_leg_joint", right_first_leg_joint) ||
-      !controller_nh.getParam("left/second_leg_joint", left_second_leg_joint) ||
-      !controller_nh.getParam("right/second_leg_joint", right_second_leg_joint))
+  const std::tuple<const char*, std::string*, hardware_interface::JointHandle*> table[] = {
+    { "left/wheel_joint", &left_wheel_joint, &left_wheel_joint_handle_ },
+    { "right/wheel_joint", &right_wheel_joint, &right_wheel_joint_handle_ },
+    { "left/first_leg_joint", &left_first_leg_joint, &left_first_leg_joint_handle_ },
+    { "right/first_leg_joint", &right_first_leg_joint, &right_first_leg_joint_handle_ },
+    { "left/second_leg_joint", &left_second_leg_joint, &left_second_leg_joint_handle_ },
+    { "right/second_leg_joint", &right_second_leg_joint, &right_second_leg_joint_handle_ }
+  };
+  auto* joint_interface = robot_hw->get<hardware_interface::EffortJointInterface>();
+  for (const auto& t : table)
   {
-    ROS_ERROR("Some Joints' name doesn't given. (namespace: %s)", controller_nh.getNamespace().c_str());
-    return false;
+    if (!controller_nh.getParam(std::get<0>(t), *std::get<1>(t)))
+    {
+      ROS_ERROR("Joint '%s' not found (ns: %s)", std::get<0>(t), controller_nh.getNamespace().c_str());
+      return false;
+    }
+    *std::get<2>(t) = joint_interface->getHandle(*std::get<1>(t));
+    joint_handles_.push_back(*std::get<2>(t));
   }
-  left_wheel_joint_handle_ = robot_hw->get<hardware_interface::EffortJointInterface>()->getHandle(left_wheel_joint);
-  right_wheel_joint_handle_ = robot_hw->get<hardware_interface::EffortJointInterface>()->getHandle(right_wheel_joint);
-  left_first_leg_joint_handle_ =
-      robot_hw->get<hardware_interface::EffortJointInterface>()->getHandle(left_first_leg_joint);
-  right_first_leg_joint_handle_ =
-      robot_hw->get<hardware_interface::EffortJointInterface>()->getHandle(right_first_leg_joint);
-  left_second_leg_joint_handle_ =
-      robot_hw->get<hardware_interface::EffortJointInterface>()->getHandle(left_second_leg_joint);
-  right_second_leg_joint_handle_ =
-      robot_hw->get<hardware_interface::EffortJointInterface>()->getHandle(right_second_leg_joint);
-  joint_handles_.push_back(left_wheel_joint_handle_);
-  joint_handles_.push_back(right_wheel_joint_handle_);
-  joint_handles_.push_back(left_first_leg_joint_handle_);
-  joint_handles_.push_back(right_first_leg_joint_handle_);
-  joint_handles_.push_back(left_second_leg_joint_handle_);
-  joint_handles_.push_back(right_second_leg_joint_handle_);
 
   model_params_ = std::make_unique<ModelParams>();
 
-  if (!controller_nh.getParam("m_w", model_params_->m_w))
-  {
-    ROS_ERROR("Params m_w doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
+  if (!setupModelParams(controller_nh) || !setupPID(controller_nh) || !setupLQR(controller_nh))
     return false;
-  }
-  if (!controller_nh.getParam("m_p", model_params_->m_p))
-  {
-    ROS_ERROR("Params m_w doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
-    return false;
-  }
-  if (!controller_nh.getParam("M", model_params_->M))
-  {
-    ROS_ERROR("Params m doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
-    return false;
-  }
-  if (!controller_nh.getParam("i_w", model_params_->i_w))
-  {
-    ROS_ERROR("Params i_w doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
-    return false;
-  }
-  if (!controller_nh.getParam("i_m", model_params_->i_m))
-  {
-    ROS_ERROR("Params i_m doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
-    return false;
-  }
-  if (!controller_nh.getParam("i_p", model_params_->i_p))
-  {
-    ROS_ERROR("Params i_m doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
-    return false;
-  }
-  if (!controller_nh.getParam("l", model_params_->l))
-  {
-    ROS_ERROR("Params l doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
-    return false;
-  }
-  if (!controller_nh.getParam("L_weight", model_params_->L_weight))
-  {
-    ROS_ERROR("Params l doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
-    return false;
-  }
-  if (!controller_nh.getParam("Lm_weight", model_params_->Lm_weight))
-  {
-    ROS_ERROR("Params l doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
-    return false;
-  }
-  if (!controller_nh.getParam("leg_length", leg_length_))
-  {
-    ROS_ERROR("Params l doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
-    return false;
-  }
-  if (!controller_nh.getParam("g", model_params_->g))
-  {
-    ROS_ERROR("Params g doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
-    return false;
-  }
-  if (!controller_nh.getParam("wheel_radius", model_params_->r))
-  {
-    ROS_ERROR("Params wheel_radius doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
-    return false;
-  }
-  if (!controller_nh.getParam("vmc_bias_angle", vmc_bias_angle_))
-  {
-    ROS_ERROR("Load param fail, check the resist of vmc_bias_angle");
-    return false;
-  }
-
-  if (controller_nh.hasParam("pid_yaw_vel"))
-    if (!pid_yaw_vel_.init(ros::NodeHandle(controller_nh, "pid_yaw_vel")))
-      return false;
-  if (controller_nh.hasParam("pid_left_leg"))
-    if (!pid_left_leg_.init(ros::NodeHandle(controller_nh, "pid_left_leg")))
-      return false;
-  if (controller_nh.hasParam("pid_right_leg"))
-    if (!pid_right_leg_.init(ros::NodeHandle(controller_nh, "pid_right_leg")))
-      return false;
-  if (controller_nh.hasParam("pid_theta_diff"))
-    if (!pid_theta_diff_.init(ros::NodeHandle(controller_nh, "pid_theta_diff")))
-      return false;
-  if (controller_nh.hasParam("pid_roll"))
-    if (!pid_roll_.init(ros::NodeHandle(controller_nh, "pid_roll")))
-      return false;
-  if (controller_nh.hasParam("pid_left_leg_theta"))
-    if (!pid_left_leg_theta_.init(ros::NodeHandle(controller_nh, "pid_left_leg_theta")))
-      return false;
-  if (controller_nh.hasParam("pid_right_leg_theta"))
-    if (!pid_right_leg_theta_.init(ros::NodeHandle(controller_nh, "pid_right_leg_theta")))
-      return false;
-  if (controller_nh.hasParam("pid_left_wheel_vel"))
-    if (!pid_left_wheel_vel_.init(ros::NodeHandle(controller_nh, "pid_left_wheel_vel")))
-      return false;
-  if (controller_nh.hasParam("pid_right_wheel_vel"))
-    if (!pid_right_wheel_vel_.init(ros::NodeHandle(controller_nh, "pid_right_wheel_vel")))
-      return false;
-
-  q_.setZero();
-  r_.setZero();
-  XmlRpc::XmlRpcValue q, r;
-  controller_nh.getParam("q", q);
-  controller_nh.getParam("r", r);
-  // Check and get Q
-  ROS_ASSERT(q.getType() == XmlRpc::XmlRpcValue::TypeArray);
-  ROS_ASSERT(q.size() == STATE_DIM);
-  for (int i = 0; i < STATE_DIM; ++i)
-  {
-    ROS_ASSERT(q[i].getType() == XmlRpc::XmlRpcValue::TypeDouble || q[i].getType() == XmlRpc::XmlRpcValue::TypeInt);
-    if (q[i].getType() == XmlRpc::XmlRpcValue::TypeDouble)
-      q_(i, i) = static_cast<double>(q[i]);
-    else if (q[i].getType() == XmlRpc::XmlRpcValue::TypeInt)
-      q_(i, i) = static_cast<int>(q[i]);
-  }
-  // Check and get R
-  ROS_ASSERT(r.getType() == XmlRpc::XmlRpcValue::TypeArray);
-  ROS_ASSERT(r.size() == CONTROL_DIM);
-  for (int i = 0; i < CONTROL_DIM; ++i)
-  {
-    ROS_ASSERT(r[i].getType() == XmlRpc::XmlRpcValue::TypeDouble || r[i].getType() == XmlRpc::XmlRpcValue::TypeInt);
-    if (r[i].getType() == XmlRpc::XmlRpcValue::TypeDouble)
-      r_(i, i) = static_cast<double>(r[i]);
-    else if (r[i].getType() == XmlRpc::XmlRpcValue::TypeInt)
-      r_(i, i) = static_cast<int>(r[i]);
-  }
-
-  // Continuous model \dot{x} = A x + B u
-  std::vector<double> lengths;
-  std::vector<Eigen::Matrix<double, CONTROL_DIM, STATE_DIM>> ks;
-  for (int i = 5; i < 30; i++)
-  {
-    double length = i / 100.;
-    lengths.push_back(length);
-    Eigen::Matrix<double, STATE_DIM, STATE_DIM> a{};
-    Eigen::Matrix<double, STATE_DIM, CONTROL_DIM> b{};
-    generateAB(model_params_, a, b, length);
-    Lqr<double> lqr(a, b, q_, r_);
-    if (!lqr.computeK())
-    {
-      ROS_ERROR("Failed to compute K of LQR.");
-      return false;
-    }
-    Eigen::Matrix<double, CONTROL_DIM, STATE_DIM> k = lqr.getK();
-    ks.push_back(k);
-  }
-  polyfit(ks, lengths, coeffs_);
 
   state_pub_.reset(new realtime_tools::RealtimePublisher<rm_msgs::BalanceState>(root_nh, "/state", 100));
   auto legCmdCallback = [this](const rm_msgs::LegCmdConstPtr& msg) {
@@ -211,8 +61,6 @@ bool BalanceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
     }
   };
   leg_cmd_sub_ = controller_nh.subscribe<rm_msgs::LegCmd>("/leg_command", 1, legCmdCallback);
-
-  balance_mode_ = BalanceMode::STAND_UP;
 
   return true;
 }
@@ -481,44 +329,6 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   }
 }
 
-void BalanceController::detectLegState(const Eigen::Matrix<double, STATE_DIM, 1>& x, LegState& leg_state)
-{
-  if (x[0] > -M_PI / 2 + 0.1 && x[0] < M_PI / 2 - 0.2)
-    leg_state = LegState::UNDER;
-  else if (x[0] < -M_PI / 2 + 0.1 && x[0] > -M_PI)
-    leg_state = LegState::FRONT;
-  else if (x[0] > M_PI / 2 - 0.2 && x[0] < M_PI)
-    leg_state = LegState::BEHIND;
-}
-
-void BalanceController::setUpLegMotion(const Eigen::Matrix<double, STATE_DIM, 1>& x, const LegState& other_leg_state,
-                                       const double& leg_length, const double& leg_theta, LegState& leg_state,
-                                       double& theta_des, double& length_des)
-{
-  switch (leg_state)
-  {
-    case LegState::UNDER:
-      theta_des = 0.15;
-      length_des = 0.05;
-      break;
-    case LegState::FRONT:
-      theta_des = M_PI / 2 + 0.2;
-      length_des = 0.4;
-      if (abs(angles::shortest_angular_distance(x[0], M_PI / 2)) < 0.2 && abs(x[4]) < 0.1)
-        leg_state = LegState::BEHIND;
-      break;
-    case LegState::BEHIND:
-      theta_des = leg_theta;
-      length_des = leg_length;
-      if (other_leg_state != LegState::FRONT)
-      {
-        theta_des = 0.;
-        length_des = 0.05;
-      }
-      break;
-  }
-}
-
 void BalanceController::standUp(const ros::Time& time, const ros::Duration& period)
 {
   if (!balance_state_changed_)
@@ -591,5 +401,91 @@ void BalanceController::stopping(const ros::Time& time)
   balance_mode_ = BalanceMode::STAND_UP;
   balance_state_changed_ = false;
 }
+
+bool BalanceController::setupModelParams(ros::NodeHandle& controller_nh)
+{
+  const std::pair<const char*, double*> tbl[] =  //
+      { { "m_w", &model_params_->m_w },
+        { "m_p", &model_params_->m_p },
+        { "M", &model_params_->M },
+        { "i_w", &model_params_->i_w },
+        { "i_m", &model_params_->i_m },
+        { "i_p", &model_params_->i_p },
+        { "l", &model_params_->l },
+        { "L_weight", &model_params_->L_weight },
+        { "Lm_weight", &model_params_->Lm_weight },
+        { "g", &model_params_->g },
+        { "wheel_radius", &model_params_->r },
+        { "leg_length", &leg_length_ },
+        { "vmc_bias_angle", &vmc_bias_angle_ } };
+
+  for (const auto& e : tbl)
+    if (!controller_nh.getParam(e.first, *e.second))
+    {
+      ROS_ERROR("Param %s not given (namespace: %s)", e.first, controller_nh.getNamespace().c_str());
+      return false;
+    }
+  return true;
+}
+
+bool BalanceController::setupPID(ros::NodeHandle& controller_nh)
+{
+  const std::pair<const char*, control_toolbox::Pid*> pids[] = {
+    { "pid_yaw_vel", &pid_yaw_vel_ },
+    { "pid_left_leg", &pid_left_leg_ },
+    { "pid_right_leg", &pid_right_leg_ },
+    { "pid_theta_diff", &pid_theta_diff_ },
+    { "pid_roll", &pid_roll_ },
+    { "pid_left_leg_theta", &pid_left_leg_theta_ },
+    { "pid_right_leg_theta", &pid_right_leg_theta_ },
+    { "pid_left_wheel_vel", &pid_left_wheel_vel_ },
+    { "pid_right_wheel_vel", &pid_right_wheel_vel_ },
+  };
+
+  for (const auto& e : pids)
+    if (controller_nh.hasParam(e.first) && !e.second->init(ros::NodeHandle(controller_nh, e.first)))
+      return false;
+  return true;
+}
+
+bool BalanceController::setupLQR(ros::NodeHandle& controller_nh)
+{
+  // Set up weight matrices
+  auto loadWeightMatrix = [](ros::NodeHandle& nh, const char* key, int dim) -> Eigen::VectorXd {
+    std::vector<double> v;
+    if (!nh.getParam(key, v) || static_cast<int>(v.size()) != dim)
+      return Eigen::VectorXd::Constant(dim, std::numeric_limits<double>::quiet_NaN());
+    return Eigen::VectorXd::Map(v.data(), dim);
+  };
+  Eigen::VectorXd q_diag = loadWeightMatrix(controller_nh, "q", STATE_DIM);
+  Eigen::VectorXd r_diag = loadWeightMatrix(controller_nh, "r", CONTROL_DIM);
+  if (!q_diag.allFinite() || !r_diag.allFinite())
+    return false;
+  q_.diagonal() = q_diag;
+  r_.diagonal() = r_diag;
+
+  // Continuous model \dot{x} = A x + B u
+  std::vector<double> lengths;
+  std::vector<Eigen::Matrix<double, CONTROL_DIM, STATE_DIM>> ks;
+  for (int i = 5; i < 30; i++)
+  {
+    double length = i / 100.;
+    lengths.push_back(length);
+    Eigen::Matrix<double, STATE_DIM, STATE_DIM> a{};
+    Eigen::Matrix<double, STATE_DIM, CONTROL_DIM> b{};
+    generateAB(model_params_, a, b, length);
+    Lqr<double> lqr(a, b, q_, r_);
+    if (!lqr.computeK())
+    {
+      ROS_ERROR("Failed to compute K of LQR.");
+      return false;
+    }
+    Eigen::Matrix<double, CONTROL_DIM, STATE_DIM> k = lqr.getK();
+    ks.push_back(k);
+  }
+  polyfit(ks, lengths, coeffs_);
+  return true;
+}
+
 }  // namespace rm_chassis_controllers
 PLUGINLIB_EXPORT_CLASS(rm_chassis_controllers::BalanceController, controller_interface::ControllerBase)
