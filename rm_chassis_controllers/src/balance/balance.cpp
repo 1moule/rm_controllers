@@ -422,6 +422,7 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   leg_conv(F_leg[1], -u_right(1) - T_theta_diff, right_angle[0], right_angle[1], right_T);
 
   // Unstick detection
+  bool maybe_unstick = false, unstick = false;
   double left_F[2], right_F[2];
   leg_conv_fwd(left_first_leg_joint_handle_.getEffort(), left_second_leg_joint_handle_.getEffort(), left_angle[0],
                left_angle[1], left_F);
@@ -443,11 +444,13 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   {
     u_left = k_left_unstick * (-x_left);
     leg_conv(F_leg[0], -u_left(1) + T_theta_diff, left_angle[0], left_angle[1], left_T);
+    maybe_unstick = true;
   }
   if (Fn_right < 20. && complete_stand_)
   {
     u_right = k_right_unstick * (-x_right);
     leg_conv(F_leg[1], -u_right(1) - T_theta_diff, right_angle[0], right_angle[1], right_T);
+    unstick = maybe_unstick ? true : false;
   }
 
   // control
@@ -469,8 +472,8 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   }
   else
   {
-    left_wheel_joint_handle_.setCommand(u_left(0) - T_yaw);
-    right_wheel_joint_handle_.setCommand(u_right(0) + T_yaw);
+    left_wheel_joint_handle_.setCommand(unstick ? 0. : u_left(0) - T_yaw);
+    right_wheel_joint_handle_.setCommand(unstick ? 0. : u_right(0) + T_yaw);
     left_first_leg_joint_handle_.setCommand(left_T[0]);
     right_first_leg_joint_handle_.setCommand(right_T[0]);
     left_second_leg_joint_handle_.setCommand(left_T[1]);
