@@ -12,6 +12,7 @@
 
 #include "rm_chassis_controllers/balance/gen_A.h"
 #include "rm_chassis_controllers/balance/gen_B.h"
+#include "rm_chassis_controllers/balance/vmc/leg_conv_fwd.h"
 
 namespace rm_chassis_controllers
 {
@@ -121,6 +122,35 @@ inline double calculateSupportForce(double F, double Tp, double leg_length, doub
                    +leg_length * (ddot_theta * sin(x(0)) + x(1) * x(1) * cos(x(0)));
   double Fn = model_params->m_w * ddot_zw + model_params->m_w * model_params->g + P;
   return Fn;
+}
+
+/**
+ * Detect whether the leg is unstick
+ * @param hip_effort
+ * @param knee_effort
+ * @param wheel_effort
+ * @param hip_angle
+ * @param knee_angle
+ * @param leg_length
+ * @param acc_z
+ * @param model_params
+ * @param x
+ * @return
+ */
+inline bool unstickDetection(const double& hip_effort, const double& knee_effort, const double& wheel_effort,
+                             const double& hip_angle, const double& knee_angle, const double& leg_length,
+                             const double& acc_z, const std::unique_ptr<ModelParams>& model_params,
+                             Eigen::Matrix<double, STATE_DIM, 1> x)
+{
+  double leg_F[2];
+  leg_conv_fwd(hip_effort, knee_effort, hip_angle, knee_angle, leg_F);
+  Eigen::Matrix<double, CONTROL_DIM, 1> u_left_real;
+  u_left_real << wheel_effort, leg_F[1];
+  double Fn = calculateSupportForce(leg_F[0], leg_F[1], leg_length, acc_z, x, u_left_real, model_params);
+  if (Fn < 20.)
+    return true;
+  else
+    return false;
 }
 
 /**
