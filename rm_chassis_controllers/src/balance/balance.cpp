@@ -74,23 +74,27 @@ void BalanceController::updateEstimation(const ros::Time& time, const ros::Durat
   acc.x = imu_handle_.getLinearAcceleration()[0];
   acc.y = imu_handle_.getLinearAcceleration()[1];
   acc.z = imu_handle_.getLinearAcceleration()[2];
+  tf2::Transform odom2imu, imu2base, odom2base;
   try
   {
     tf2::doTransform(gyro, angular_vel_base_,
                      robot_state_handle_.lookupTransform("base_link", imu_handle_.getFrameId(), time));
     tf2::doTransform(acc, linear_acc_base_, robot_state_handle_.lookupTransform("odom", imu_handle_.getFrameId(), time));
-  }
-  catch (tf2::TransformException& ex)
-  {
-    ROS_WARN("%s", ex.what());
-    return;
-  }
-  tf2::Transform odom2imu, imu2base, odom2base;
-  try
-  {
     geometry_msgs::TransformStamped tf_msg;
     tf_msg = robot_state_handle_.lookupTransform(imu_handle_.getFrameId(), "base_link", time);
     tf2::fromMsg(tf_msg.transform, imu2base);
+    tf2::Quaternion odom2imu_quaternion;
+    tf2::Vector3 odom2imu_origin;
+    odom2imu_quaternion.setValue(imu_handle_.getOrientation()[0], imu_handle_.getOrientation()[1],
+                                 imu_handle_.getOrientation()[2], imu_handle_.getOrientation()[3]);
+    odom2imu_origin.setValue(0, 0, 0);
+    odom2imu.setOrigin(odom2imu_origin);
+    odom2imu.setRotation(odom2imu_quaternion);
+    odom2base = odom2imu * imu2base;
+    quatToRPY(toMsg(odom2base).rotation, roll_, pitch_, yaw_);
+    tf2::Vector3 z_body(0, 0, 1);
+    tf2::Vector3 z_world = tf2::quatRotate(odom2base.getRotation(), z_body);
+    overturn_ = z_world.z() < 0;
   }
   catch (tf2::TransformException& ex)
   {
@@ -99,15 +103,6 @@ void BalanceController::updateEstimation(const ros::Time& time, const ros::Durat
       joint_handle.setCommand(0.);
     return;
   }
-  tf2::Quaternion odom2imu_quaternion;
-  tf2::Vector3 odom2imu_origin;
-  odom2imu_quaternion.setValue(imu_handle_.getOrientation()[0], imu_handle_.getOrientation()[1],
-                               imu_handle_.getOrientation()[2], imu_handle_.getOrientation()[3]);
-  odom2imu_origin.setValue(0, 0, 0);
-  odom2imu.setOrigin(odom2imu_origin);
-  odom2imu.setRotation(odom2imu_quaternion);
-  odom2base = odom2imu * imu2base;
-  quatToRPY(toMsg(odom2base).rotation, roll_, pitch_, yaw_);
 
   // vmc
   // [0]:first_vmc_joint [1]:second_vmc_joint
@@ -177,6 +172,11 @@ void BalanceController::moveJoint(const ros::Time& time, const ros::Duration& pe
     case BalanceMode::SIT_DOWN:
     {
       sitDown(time, period);
+      break;
+    }
+    case BalanceMode::RECOVER:
+    {
+      recover(time, period);
       break;
     }
   }
@@ -291,7 +291,7 @@ void BalanceController::normal(const ros::Time& time, const ros::Duration& perio
   }
 
   // control
-  if (complete_stand_ && (abs(x_left(4)) > 0.4 || abs(x_left(0)) > 1.5))
+  if ((complete_stand_ && (abs(x_left(4)) > 0.4 || abs(x_left(0)) > 1.5)) || overturn_)
   {
     balance_mode_ = BalanceMode::SIT_DOWN;
     balance_state_changed_ = false;
@@ -368,9 +368,53 @@ void BalanceController::sitDown(const ros::Time& time, const ros::Duration& peri
   right_second_leg_joint_handle_.setCommand(0.);
   if (abs(x_left_(1)) < 0.1 && abs(x_left_(5)) < 0.1 && abs(x_left_(3)) < 0.1)
   {
-    balance_mode_ = BalanceMode::STAND_UP;
+    if (!overturn_)
+      balance_mode_ = BalanceMode::STAND_UP;
+    else
+      balance_mode_ = BalanceMode::RECOVER;
     balance_state_changed_ = false;
     ROS_INFO("[balance] Exit NORMAL");
+  }
+}
+
+void BalanceController::recover(const ros::Time& time, const ros::Duration& period)
+{
+  if (!balance_state_changed_)
+  {
+    ROS_INFO("[balance] Enter RECOVER");
+    balance_state_changed_ = true;
+  }
+  detectLegState(x_left_, left_leg_state);
+  detectLegState(x_right_, right_leg_state);
+  Eigen::Matrix<double, 2, 1> F_leg;
+  double T_theta_l, T_theta_r;
+  double left_T[2]{ 0. }, right_T[2]{ 0. };
+  if (left_leg_state != LegState::FRONT)
+  {
+    F_leg[0] = pid_left_leg_.computeCommand(0.4 - left_pos_[0], period);
+    T_theta_l =
+        pid_left_leg_theta_.computeCommand(-angles::shortest_angular_distance(-M_PI / 2 + 0.2, left_pos_[1]), period);
+    leg_conv(F_leg[0], -T_theta_l, left_angle[0], left_angle[1], left_T);
+  }
+  if (right_leg_state != LegState::FRONT)
+  {
+    F_leg[1] = pid_right_leg_.computeCommand(0.4 - right_pos_[0], period);
+    T_theta_r =
+        pid_right_leg_theta_.computeCommand(-angles::shortest_angular_distance(-M_PI / 2 + 0.2, right_pos_[1]), period);
+    leg_conv(F_leg[1], -T_theta_r, right_angle[0], right_angle[1], right_T);
+  }
+  left_first_leg_joint_handle_.setCommand(left_T[0]);
+  right_first_leg_joint_handle_.setCommand(right_T[0]);
+  left_second_leg_joint_handle_.setCommand(left_T[1]);
+  right_second_leg_joint_handle_.setCommand(right_T[1]);
+  left_wheel_joint_handle_.setCommand(0.);
+  right_wheel_joint_handle_.setCommand(0.);
+
+  if (left_leg_state == LegState::FRONT && right_leg_state == LegState::FRONT)
+  {
+    balance_mode_ = BalanceMode::STAND_UP;
+    balance_state_changed_ = false;
+    ROS_INFO("[balance] Exit RECOVER");
   }
 }
 
@@ -383,7 +427,7 @@ geometry_msgs::Twist BalanceController::odometry()
 
 void BalanceController::stopping(const ros::Time& time)
 {
-  balance_mode_ = BalanceMode::STAND_UP;
+  balance_mode_ = BalanceMode::SIT_DOWN;
   balance_state_changed_ = false;
 }
 

@@ -27,6 +27,7 @@ class BalanceController : public ChassisBase<rm_control::RobotStateInterface, ha
     NORMAL,
     STAND_UP,
     SIT_DOWN,
+    RECOVER
   };
 
 public:
@@ -40,6 +41,7 @@ private:
   void normal(const ros::Time& time, const ros::Duration& period);
   void standUp(const ros::Time& time, const ros::Duration& period);
   void sitDown(const ros::Time& time, const ros::Duration& period);
+  void recover(const ros::Time& time, const ros::Duration& period);
   bool setupModelParams(ros::NodeHandle& controller_nh);
   bool setupPID(ros::NodeHandle& controller_nh);
   bool setupLQR(ros::NodeHandle& controller_nh);
@@ -52,12 +54,13 @@ private:
 
   std::unique_ptr<ModelParams> model_params_;
 
-  int balance_mode_ = BalanceMode::STAND_UP;
+  int balance_mode_ = BalanceMode::SIT_DOWN;
   bool balance_state_changed_ = false;
 
   // stand up
   int left_leg_state, right_leg_state;
   bool leg_under_body_ = false, leg_front_body_ = false, leg_behind_body_ = false, complete_stand_ = false;
+  bool overturn_ = false;
 
   // jump
   bool complete_first_shrink_ = false, complete_elongation_ = false, complete_second_shrink_ = false,
