@@ -60,6 +60,9 @@ bool ChassisBase<T...>::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
     ROS_ERROR("Some chassis params doesn't given (namespace: %s)", controller_nh.getNamespace().c_str());
     return false;
   }
+  pitch_angle_threshold_ = getParam(controller_nh, "pitch_angle_threshold", -0.25);
+  scale_ = getParam(controller_nh, "scale", 1.);
+  enable_uphill_acceleration_ = getParam(controller_nh, "enable_uphill_acceleration", false);
   wheel_radius_ = getParam(controller_nh, "wheel_radius", 0.02);
   twist_angular_ = getParam(controller_nh, "twist_angular", M_PI / 6);
   max_odom_vel_ = getParam(controller_nh, "max_odom_vel", 0);
@@ -114,6 +117,13 @@ bool ChassisBase<T...>::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
     if (!pid_follow_.init(ros::NodeHandle(controller_nh, "pid_follow")))
       return false;
 
+  // dynamic reconfigure
+  power_limit_srv_ = new dynamic_reconfigure::Server<rm_chassis_controllers::PowerLimitConfig>(
+      ros::NodeHandle(controller_nh, "power"));
+  dynamic_reconfigure::Server<rm_chassis_controllers::PowerLimitConfig>::CallbackType cb =
+      boost::bind(&ChassisBase<T...>::powerLimitReconfigCB, this, _1, _2);
+  power_limit_srv_->setCallback(cb);
+
   return true;
 }
 
@@ -139,13 +149,13 @@ void ChassisBase<T...>::update(const ros::Time& time, const ros::Duration& perio
     vel_cmd_.y = ramp_y_->output();
     vel_cmd_.z = cmd_vel.angular.z;
   }
-
+  // test
   if (cmd_rt_buffer_.readFromRT()->cmd_chassis_.follow_source_frame.empty())
     follow_source_frame_ = "yaw";
   else
     follow_source_frame_ = cmd_rt_buffer_.readFromRT()->cmd_chassis_.follow_source_frame;
   if (cmd_rt_buffer_.readFromRT()->cmd_chassis_.command_source_frame.empty())
-    command_source_frame_ = "yaw";
+    command_source_frame_ = "bask_link";
   else
     command_source_frame_ = cmd_rt_buffer_.readFromRT()->cmd_chassis_.command_source_frame;
 
@@ -163,10 +173,10 @@ void ChassisBase<T...>::update(const ros::Time& time, const ros::Duration& perio
       raw();
       break;
     case FOLLOW:
-      follow(time, period);
+      raw();
       break;
     case TWIST:
-      twist(time, period);
+      raw();
       break;
   }
 
@@ -269,6 +279,9 @@ void ChassisBase<T...>::updateOdom(const ros::Time& time, const ros::Duration& p
     try
     {
       odom2base_ = robot_state_handle_.lookupTransform("odom", "base_link", ros::Time(0));
+      tf2::Quaternion q;
+      tf2::fromMsg(odom2base_.transform.rotation, q);
+      tf2::Matrix3x3(q).getEulerYPR(yaw_, pitch_, roll_);
     }
     catch (tf2::TransformException& ex)
     {
@@ -379,6 +392,12 @@ template <typename... T>
 void ChassisBase<T...>::powerLimit()
 {
   double power_limit = cmd_rt_buffer_.readFromRT()->cmd_chassis_.power_limit;
+  const auto& power_config = *power_limit_rt_buffer_.readFromRT();
+
+  double vel_coeff = power_config.vel_coeff;
+  double effort_coeff = power_config.effort_coeff;
+  double power_offset = power_config.power_offset;
+
   // Three coefficients of a quadratic equation in one variable
   double a = 0., b = 0., c = 0.;
   for (const auto& joint : joint_handles_)
@@ -392,14 +411,28 @@ void ChassisBase<T...>::powerLimit()
       c += square(real_vel);
     }
   }
-  a *= effort_coeff_;
-  c = c * velocity_coeff_ - power_offset_ - power_limit;
+  a *= effort_coeff;
+  c = c * vel_coeff - power_offset - power_limit;
   // Root formula for quadratic equation in one variable
   double zoom_coeff = (square(b) - 4 * a * c) > 0 ? ((-b + sqrt(square(b) - 4 * a * c)) / (2 * a)) : 0.;
   for (auto joint : joint_handles_)
     if (joint.getName().find("wheel") != std::string::npos)
     {
-      joint.setCommand(zoom_coeff > 1 ? joint.getCommand() : joint.getCommand() * zoom_coeff);
+      if (pitch_ < pitch_angle_threshold_ && enable_uphill_acceleration_)
+      {
+        if (joint.getName().find("back") != std::string::npos)
+        {
+          joint.setCommand(zoom_coeff > 1 ? joint.getCommand() : joint.getCommand() * zoom_coeff * scale_);
+        }
+        if (joint.getName().find("front") != std::string::npos)
+        {
+          joint.setCommand(zoom_coeff > 1 ? joint.getCommand() : joint.getCommand() * zoom_coeff);
+        }
+      }
+      else
+      {
+        joint.setCommand(zoom_coeff > 1 ? joint.getCommand() : joint.getCommand() * zoom_coeff);
+      }
     }
 }
 
@@ -436,6 +469,13 @@ void ChassisBase<T...>::outsideOdomCallback(const nav_msgs::Odometry::ConstPtr& 
 {
   odom_buffer_.writeFromNonRT(*msg);
   topic_update_ = true;
+}
+
+template <typename... T>
+void ChassisBase<T...>::powerLimitReconfigCB(rm_chassis_controllers::PowerLimitConfig& config, uint32_t /*level*/)
+{
+  ROS_INFO("[Power Limit] Dynamic params change");
+  power_limit_rt_buffer_.writeFromNonRT(config);
 }
 
 }  // namespace rm_chassis_controllers

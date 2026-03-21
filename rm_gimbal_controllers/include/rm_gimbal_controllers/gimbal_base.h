@@ -62,8 +62,10 @@ namespace rm_gimbal_controllers
 {
 struct GimbalConfig
 {
-  double yaw_k_v, pitch_k_v;
-  double chassis_comp_a, chassis_comp_b, chassis_comp_c, chassis_comp_d;
+  double yaw_k_v_, pitch_k_v_;
+  double chassis_comp_a_, chassis_comp_b_, chassis_comp_c_,
+      chassis_comp_d_;  // sine wave compensation, a * sin(b * chassis_angular_z + c) + d
+  double accel_pitch_{}, accel_yaw_{};
 };
 
 class ChassisVel
@@ -138,15 +140,15 @@ public:
   bool init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& root_nh, ros::NodeHandle& controller_nh) override;
   void starting(const ros::Time& time) override;
   void update(const ros::Time& time, const ros::Duration& period) override;
-  void setDes(const ros::Time& time, double yaw_des, double pitch_des);
+  void setDes(const ros::Time& time, double yaw_des, double pitch_des, double traject_yaw_des, bool update_yaw = true,
+              bool update_pitch = true);
 
 private:
   void rate(const ros::Time& time, const ros::Duration& period);
   void track(const ros::Time& time);
   void direct(const ros::Time& time);
   void traj(const ros::Time& time);
-  bool setDesIntoLimit(const tf2::Quaternion& base2gimbal_des, const urdf::JointConstSharedPtr& joint_urdf,
-                       tf2::Quaternion& base2new_des);
+  bool setDesIntoLimit(double& angle, const urdf::JointConstSharedPtr& joint_urdf, bool update, double current_angle);
   void moveJoint(const ros::Time& time, const ros::Duration& period);
   void updateChassisVel();
   double feedForward(const ros::Time& time);
@@ -180,13 +182,13 @@ private:
 
   rm_msgs::GimbalCmd cmd_gimbal_;
   rm_msgs::TrackData data_track_;
-  std::string gimbal_des_frame_id_{}, imu_name_{};
+  std::string gimbal_des_frame_id_{}, imu_name_{}, gimbal_traject_des_frame_id_;
   double publish_rate_{};
   bool state_changed_{};
   int loop_count_{};
 
   // Transform
-  geometry_msgs::TransformStamped odom2gimbal_des_, odom2gimbal_, odom2base_, last_odom2base_;
+  geometry_msgs::TransformStamped odom2gimbal_des_, odom2gimbal_, odom2base_, last_odom2base_, odom2gimbal_traject_des_;
 
   // Gravity Compensation
   geometry_msgs::Vector3 mass_origin_;
@@ -211,6 +213,13 @@ private:
   };
   int state_ = RATE;
   bool start_ = false;
+
+  ros::Duration period_;
+  ros::Time time_;
+  double pos_real[3]{ 0. };
+  double pos_des[3]{ 0. }, vel_des[3]{ 0. }, angle_error[3]{ 0. }, traject_pos_des[3]{ 0. },
+      traject_angle_error[3]{ 0. };
+  double last_acc_yaw = 0;
 };
 
 }  // namespace rm_gimbal_controllers
