@@ -556,21 +556,21 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
       {
         ctrls_.at(2)->setCommand(pid_pos_.at(2)->getCurrentCmd() -
                                  updateCompensation(chassis_vel_->angular_->z()) * chassis_vel_->angular_->z() +
-                                 config_.yaw_k_v_ * vel_des[2] + ctrls_.at(2)->joint_.getVelocity() - angular_vel.z +
+                                 config_.yaw_k_v * vel_des[2] + ctrls_.at(2)->joint_.getVelocity() - angular_vel.z +
                                  bullet_solver_->getTrajectEffortff());
       }
       else
       {
         ctrls_.at(2)->setCommand(pid_pos_.at(2)->getCurrentCmd() -
                                  updateCompensation(chassis_vel_->angular_->z()) * chassis_vel_->angular_->z() +
-                                 config_.yaw_k_v_ * vel_des[2] + ctrls_.at(2)->joint_.getVelocity() - angular_vel.z);
+                                 config_.yaw_k_v * vel_des[2] + ctrls_.at(2)->joint_.getVelocity() - angular_vel.z);
       }
     }
     else
     {
       ctrls_.at(2)->setCommand(pid_pos_.at(2)->getCurrentCmd() -
                                updateCompensation(chassis_vel_->angular_->z()) * chassis_vel_->angular_->z() +
-                               config_.yaw_k_v_ * vel_des[2] + ctrls_.at(2)->joint_.getVelocity() - angular_vel.z);
+                               config_.yaw_k_v * vel_des[2] + ctrls_.at(2)->joint_.getVelocity() - angular_vel.z);
     }
 
     ctrls_.at(2)->update(time, period);
@@ -589,7 +589,7 @@ void Controller::moveJoint(const ros::Time& time, const ros::Duration& period)
         pub.second->msg_.set_point_dot = vel_des[pub.first];
         pub.second->msg_.process_value = pos_real[pub.first];
         pub.second->msg_.error = angles::shortest_angular_distance(pos_real[pub.first], pos_des[pub.first]);
-        pub.second->msg_.command = pid_pos_[pub.first]->getCurrentCmd();
+        pub.second->msg_.command = tracking_differentiator_[pub.first]->getX1();
         pub.second->msg_.shoot_number = bullet_solver_->getShootnum();
         pub.second->unlockAndPublish();
       }

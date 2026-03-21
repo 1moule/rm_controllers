@@ -62,10 +62,9 @@ namespace rm_gimbal_controllers
 {
 struct GimbalConfig
 {
-  double yaw_k_v_, pitch_k_v_;
-  double chassis_comp_a_, chassis_comp_b_, chassis_comp_c_,
-      chassis_comp_d_;  // sine wave compensation, a * sin(b * chassis_angular_z + c) + d
-  double accel_pitch_{}, accel_yaw_{};
+  double yaw_k_v, pitch_k_v;
+  double chassis_comp_a, chassis_comp_b, chassis_comp_c,
+      chassis_comp_d;  // sine wave compensation, a * sin(b * chassis_angular_z + c) + d
 };
 
 class ChassisVel
